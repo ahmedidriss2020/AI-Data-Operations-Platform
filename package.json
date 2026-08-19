@@ -8,6 +8,7 @@
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
+    "db:seed": "tsx scripts/seed-demo.ts",
     "db:types": "supabase gen types typescript --local > apps/web/src/lib/database.types.ts",
     "test:isolation": "tsx scripts/rls-smoke.ts",
     "test:e2e": "tsx scripts/e2e-upload.ts",

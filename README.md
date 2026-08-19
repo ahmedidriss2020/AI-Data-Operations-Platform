@@ -28,8 +28,14 @@ npm install                 # root tooling
 npm --prefix apps/web install
 
 npm run db:start            # local Supabase stack, applies all migrations
+npm run db:seed             # demo firm + two client workspaces to sign into
 npm run dev                 # http://127.0.0.1:3100
 ```
+
+Sign in as `demo@example.test` / `demo-password-123`, or create your own account at `/signup`
+(local email confirmation is off, so signup is immediate). Re-run `npm run db:seed` after any
+`npm run db:reset` to put the demo account back — it refuses to run against anything other than a
+local stack.
 
 `npm run db:start` prints the local keys. They are already in `apps/web/.env.local`; if you reset
 the stack and they change, copy them across from that output.
