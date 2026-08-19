@@ -44,7 +44,13 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    // method="post" matters even though onSubmit handles the submission and
+    // calls preventDefault. If the page has not hydrated -- a chunk fails to
+    // load, JS is blocked, the network drops mid-load -- the browser falls back
+    // to submitting natively, and an HTML form with no method defaults to GET.
+    // That puts the password in the URL, and from there into browser history,
+    // the referrer header and every access log along the way.
+    <form onSubmit={onSubmit} method="post" className="space-y-4">
       <Field label="Work email">
         <input
           className={inputClass}

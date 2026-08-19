@@ -127,7 +127,10 @@ export function UploadPanel({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    // method="post" for the same reason as the sign-in form: an unhydrated page
+    // would otherwise submit natively as a GET and put the field values in the
+    // URL.
+    <form onSubmit={onSubmit} method="post" className="space-y-4">
       <Field
         label="Recurring dataset"
         hint="Group each month's file under the same dataset. From Week 2 the parser matches this automatically."
