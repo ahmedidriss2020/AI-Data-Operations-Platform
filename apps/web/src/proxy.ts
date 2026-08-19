@@ -66,5 +66,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // Excludes /_next entirely, not just /_next/static and /_next/image. The dev
+  // HMR endpoint lives at /_next/hmr and is a WebSocket upgrade: routing it
+  // through here breaks the upgrade, and hot reload then fails on every retry.
+  matcher: ['/((?!_next/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 };
