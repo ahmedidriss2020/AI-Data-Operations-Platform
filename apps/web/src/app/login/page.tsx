@@ -45,7 +45,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen w-full" style={{ background: 'var(--az-bg)' }}>
       {/* Brand Hero Side Panel with High Quality Interactive Workflow Demo */}
       <div
-        className="relative hidden w-1/2 flex-col justify-between overflow-hidden p-12 lg:flex"
+        className="az-aurora relative hidden w-1/2 flex-col justify-between overflow-hidden p-12 lg:flex"
         style={{
           background: 'var(--az-gradient-hero)',
           color: 'white',
@@ -53,7 +53,8 @@ export default function LoginPage() {
       >
         <div className="relative z-10 flex items-center justify-between">
           <Logo size="lg" />
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-400">
+          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-400">
+            <span className="az-live-dot" aria-hidden="true" />
             24/7 Hermes VPS Active
           </span>
         </div>
@@ -64,7 +65,7 @@ export default function LoginPage() {
             Financial Data Operations Copilot
           </div>
 
-          <h2 className="text-4xl font-extrabold tracking-tight leading-tight">
+          <h2 className="az-gradient-text text-4xl font-extrabold tracking-tight leading-tight">
             Learn a client&apos;s recurring workflow once.{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-indigo-400">
               Replay it forever.

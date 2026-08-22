@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { CountUp, Spotlight } from '@/components/motion';
+
 /* ==========================================================================
    AnalyzeIt — UI/UX Pro Max Component Library
    
@@ -175,9 +177,11 @@ export function KpiCard({
   icon?: ReactNode;
   trend?: { value: string; positive: boolean };
 }) {
+  const numeric = typeof value === 'number';
+
   return (
-    <div
-      className="az-card-interactive flex items-start gap-3.5 p-4.5 az-animate-in"
+    <Spotlight
+      className="flex items-start gap-3.5 p-4.5"
       style={{
         background: 'var(--az-bg-card)',
         border: '1px solid var(--az-border)',
@@ -187,11 +191,12 @@ export function KpiCard({
     >
       {icon && (
         <div
-          className="flex shrink-0 items-center justify-center rounded-xl p-2.5"
+          className="flex shrink-0 items-center justify-center rounded-xl p-2.5 transition-transform duration-300"
           style={{
             background: 'rgba(16,185,129,.1)',
             color: 'var(--az-accent-400)',
             border: '1px solid rgba(16,185,129,.2)',
+            boxShadow: 'var(--az-shadow-glow-sm)',
           }}
         >
           {icon}
@@ -201,20 +206,37 @@ export function KpiCard({
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
           {label}
         </p>
-        <p className="mt-1 text-2xl font-extrabold tracking-tight text-slate-100">
-          {value}
+        {/* Tabular figures so a column of KPIs lines up on the decimal. */}
+        <p className="az-tabular mt-1 text-2xl font-extrabold tracking-tight text-slate-100">
+          {numeric ? <CountUp value={value as number} /> : value}
         </p>
         {trend && (
           <p
             className="mt-1 flex items-center gap-1 text-xs font-bold"
             style={{ color: trend.positive ? 'var(--az-success-400)' : 'var(--az-danger-400)' }}
           >
-            <span>{trend.positive ? '↑' : '↓'}</span>
+            {/* SVG rather than a text arrow: scales with the type and keeps
+                its weight at small sizes. */}
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              style={{ transform: trend.positive ? 'none' : 'rotate(180deg)' }}
+            >
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
             <span>{trend.value}</span>
+            <span className="sr-only">{trend.positive ? 'increase' : 'decrease'}</span>
           </p>
         )}
       </div>
-    </div>
+    </Spotlight>
   );
 }
 
@@ -283,6 +305,7 @@ export const buttonClass = [
   'hover:shadow-[0_0_20px_rgba(34,197,94,0.4)] hover:-translate-y-0.5',
   'active:translate-y-0 active:shadow-md cursor-pointer',
   'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none',
+  'az-sheen az-pressable',
 ].join(' ');
 
 export const buttonStyle: React.CSSProperties = {
@@ -432,7 +455,9 @@ export function StatusBadge({ status }: { status: string }) {
         style={{
           background: config.dot,
           boxShadow: `0 0 8px ${config.dot}`,
-          ...(status === 'pending' ? { animation: 'az-pulse-soft 2s ease-in-out infinite' } : {}),
+          ...(status === 'pending'
+            ? { animation: 'az-ping 2.4s var(--az-ease-out) infinite' }
+            : {}),
         }}
       />
       {status}
@@ -504,25 +529,35 @@ export function NavItem({
    -------------------------------------------------------------------------- */
 
 export function ProgressBar({ progress, label }: { progress: number; label?: string }) {
+  const clamped = Math.min(100, Math.max(0, progress));
+  // The shimmer reads as "still working"; stop it once the bar is full.
+  const done = clamped >= 100;
+
   return (
     <div className="w-full">
       {label && (
         <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
           <span className="text-slate-400">{label}</span>
-          <span className="text-emerald-400">
-            {Math.round(progress)}%
+          <span className="az-tabular text-emerald-400">
+            {Math.round(clamped)}%
           </span>
         </div>
       )}
       <div
         className="h-2 w-full overflow-hidden rounded-full bg-slate-800"
+        role="progressbar"
+        aria-valuenow={Math.round(clamped)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label ?? 'Progress'}
       >
         <div
-          className="h-full rounded-full transition-all duration-500"
+          className={`h-full rounded-full ${done ? '' : 'az-shimmer'}`}
           style={{
-            width: `${Math.min(100, Math.max(0, progress))}%`,
+            width: `${clamped}%`,
             background: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)',
             boxShadow: '0 0 12px rgba(16,185,129,.5)',
+            transition: 'width var(--az-dur-slow) var(--az-ease-out)',
           }}
         />
       </div>
