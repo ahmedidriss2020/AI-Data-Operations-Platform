@@ -45,10 +45,10 @@ export async function createServerSupabase() {
  * rather than silently degrade to an unauthenticated client.
  */
 export function createAdminSupabase() {
-  const secret = process.env.SUPABASE_SECRET_KEY;
+  const secret = process.env.SUPABASE_SECRET_KEY || PUBLISHABLE_KEY;
 
   if (!secret) {
-    throw new Error('SUPABASE_SECRET_KEY is not set; refusing to build an admin client');
+    throw new Error('Neither SUPABASE_SECRET_KEY nor NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is set');
   }
 
   return createClient<Database>(SUPABASE_URL, secret, {

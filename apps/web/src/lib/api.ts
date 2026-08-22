@@ -20,6 +20,7 @@ export function handleRouteError(error: unknown) {
     return NextResponse.json({ error: 'Invalid request', issues: error.issues }, { status: 400 });
   }
 
-  console.error('[api] unhandled error', error);
-  return NextResponse.json({ error: 'Unexpected server error' }, { status: 500 });
+  console.error('[api] unhandled error:', error);
+  const detail = error instanceof Error ? error.message : String(error);
+  return NextResponse.json({ error: `Server error: ${detail}` }, { status: 500 });
 }
