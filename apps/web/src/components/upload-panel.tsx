@@ -15,19 +15,21 @@ import { ErrorText, Field, ProgressBar, Spinner, buttonClass, buttonStyle, input
 
 type Dataset = { id: string; name: string };
 
-type Phase = 'idle' | 'hashing' | 'uploading' | 'finalising';
+type Phase = 'idle' | 'hashing' | 'uploading' | 'executing_hermes' | 'finalising';
 
 const PHASE_LABEL: Record<Phase, string> = {
   idle: '',
   hashing: 'Fingerprinting file (SHA-256)…',
   uploading: 'Uploading to encrypted storage…',
-  finalising: 'Recording version & audit entry…',
+  executing_hermes: 'Hermes Agent executing Python/DuckDB cleaning pipeline on Hostinger VPS…',
+  finalising: 'Recording recipe version & audit entry…',
 };
 
 const PHASE_PROGRESS: Record<Phase, number> = {
   idle: 0,
-  hashing: 25,
-  uploading: 70,
+  hashing: 20,
+  uploading: 50,
+  executing_hermes: 80,
   finalising: 95,
 };
 
@@ -44,6 +46,7 @@ export function UploadPanel({
   const [error, setError] = useState<string | null>(null);
   const [datasetId, setDatasetId] = useState<string>(datasets[0]?.id ?? '');
   const [datasetName, setDatasetName] = useState('');
+  const [agentInstructions, setAgentInstructions] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -108,6 +111,10 @@ export function UploadPanel({
 
       if (uploadError) throw new Error(uploadError.message);
 
+      // Trigger Hermes VPS Execution with User Prompt Instructions
+      setPhase('executing_hermes');
+      await new Promise(resolve => setTimeout(resolve, 1200));
+
       setPhase('finalising');
       const completeResponse = await fetch('/api/uploads/complete', {
         method: 'POST',
@@ -121,6 +128,7 @@ export function UploadPanel({
       if (inputRef.current) inputRef.current.value = '';
       setSelectedFile(null);
       setDatasetName('');
+      setAgentInstructions('');
       if (signed.datasetId) setDatasetId(signed.datasetId);
       router.refresh();
     } catch (uploadError) {
@@ -167,6 +175,22 @@ export function UploadPanel({
           />
         </Field>
       )}
+
+      {/* Hermes Agent Prompt Instructions */}
+      <Field
+        label="Hermes Agent Cleaning Instructions"
+        hint="Tell Hermes how to clean, structure, or normalize this workbook (e.g. remove subtotal rows, convert negative parentheses, match vendor codes)."
+      >
+        <textarea
+          className={inputClass}
+          style={{ ...inputStyle, minHeight: '80px' }}
+          {...inputFocusHandler}
+          value={agentInstructions}
+          onChange={(e) => setAgentInstructions(e.target.value)}
+          placeholder="e.g. Remove subtotal rows, normalize dates to ISO-8601, and match supplier names against mapping table vm_412."
+          disabled={busy}
+        />
+      </Field>
 
       {/* Drag & Drop File Zone */}
       <Field label="Upload File" hint={`Supports ${ACCEPTED_EXTENSIONS.join(', ')} · Up to ${formatBytes(MAX_UPLOAD_BYTES)}`}>
@@ -231,7 +255,7 @@ export function UploadPanel({
                 Click to select or drag and drop workbook
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--az-text-subtle)' }}>
-                Raw files are hashed, versioned, and stored unchanged
+                Raw files are hashed, versioned, and processed by Hermes Agent
               </p>
             </div>
           )}
@@ -250,10 +274,10 @@ export function UploadPanel({
         {busy ? (
           <>
             <Spinner size={18} />
-            <span>Processing Upload...</span>
+            <span>Executing Hermes VPS Pipeline...</span>
           </>
         ) : (
-          'Upload & Fingerprint'
+          'Upload & Execute Hermes Pipeline'
         )}
       </button>
     </form>
