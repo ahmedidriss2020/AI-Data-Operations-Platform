@@ -266,11 +266,11 @@ export const inputStyle: React.CSSProperties = {
 };
 
 export const inputFocusHandler = {
-  onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
+  onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     e.currentTarget.style.borderColor = 'var(--az-accent-400)';
     e.currentTarget.style.boxShadow = '0 0 0 3px rgba(34,197,94,.18)';
   },
-  onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
+  onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     e.currentTarget.style.borderColor = 'var(--az-border)';
     e.currentTarget.style.boxShadow = 'none';
   },

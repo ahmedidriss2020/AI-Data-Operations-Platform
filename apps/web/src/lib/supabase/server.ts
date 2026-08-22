@@ -45,10 +45,14 @@ export async function createServerSupabase() {
  * rather than silently degrade to an unauthenticated client.
  */
 export function createAdminSupabase() {
-  const secret = process.env.SUPABASE_SECRET_KEY || PUBLISHABLE_KEY;
+  const secret = process.env.SUPABASE_SECRET_KEY;
 
   if (!secret) {
-    throw new Error('Neither SUPABASE_SECRET_KEY nor NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is set');
+    throw new Error(
+      'SUPABASE_SECRET_KEY is not set. The write paths need the service role: ' +
+        'the datasets and raw_uploads tables grant only SELECT to authenticated, ' +
+        'so falling back to the publishable key fails with an RLS violation.',
+    );
   }
 
   return createClient<Database>(SUPABASE_URL, secret, {
