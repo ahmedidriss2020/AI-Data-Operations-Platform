@@ -64,7 +64,7 @@ export default async function AppHomePage() {
       </Card>
 
       {/* KPI Highlights Bar */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="az-stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           label="Active Client Workspaces"
           value={workspaces.length}
