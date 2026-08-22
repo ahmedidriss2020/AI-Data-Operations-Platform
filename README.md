@@ -1,97 +1,78 @@
-# AI Data Operations Platform
+# AnalyzeIt — AI Data Operations Platform
 
-A workflow-learning data-operations copilot for accounting practices. The product learns a
-client's recurring data workflow once, turns it into a versioned executable recipe, and from then
-on surfaces only the exceptions. See [`AI_Data_Operations_PRD_v2.md`](./AI_Data_Operations_PRD_v2.md)
-for the full specification.
+A workflow-learning data-operations copilot for accounting practices. AnalyzeIt learns a client's recurring data workflow once, turns it into a versioned executable recipe, and from then on surfaces only the exceptions. See [`AI_Data_Operations_PRD_v2.md`](./AI_Data_Operations_PRD_v2.md) for the full product specification.
 
-**Current state: Phase 1 (Week 1) complete — the foundation.** A firm can sign up, create client
-workspaces, upload a real messy workbook to private storage, and see every action in an immutable
-audit log. Parsing, cleaning, recipes and AI arrive in Weeks 2–8.
+**Current State**: Full UI/UX Pro Max OLED Dark rebrand complete (`AnalyzeIt`). Database migrated to remote Supabase project `ai data operation seystem`. 24/7 Hermes agent Hostinger integration spec completed in [`HERMES_HOSTINGER_DEPLOYMENT.md`](./HERMES_HOSTINGER_DEPLOYMENT.md).
 
-## Layout
+---
+
+## 🏗️ Architecture
 
 ```
-apps/web/           Next.js 16 App Router application
-services/parser/    Python workbook parser (Week 2)
-supabase/           config + SQL migrations
-scripts/            test suites and fixture generation
-fixtures/messy/     deliberately messy workbooks (PRD section 6)
+ ┌──────────────────────────────────────┐                     ┌──────────────────────────────────────┐
+ │       Hostinger VPS (24/7)           │                     │        AnalyzeIt Dashboard (Next.js)  │
+ │                                      │   HTTP / Webhooks   │                                      │
+ │   • Hermes Agent (FastAPI / Python)  │ ──────────────────> │   • Next.js App (apps/web)           │
+ │   • PM2 Daemon / Systemd Service     │ <────────────────── │   • Supabase Postgres DB             │
+ │   • DuckDB / Polars Execution        │  Tool Contract Calls│   • Supabase Storage (Raw / Parquet) │
+ └──────────────────────────────────────┘                     └──────────────────────────────────────┘
 ```
 
-## Running it
+```
+apps/web/           Next.js 16 App Router application (AnalyzeIt Dashboard UI)
+services/parser/    Python workbook parser service
+supabase/           Supabase config + SQL migrations
+scripts/            Test suites and fixture generation
+fixtures/messy/     Deliberately messy workbooks (PRD section 6)
+```
 
-Requires Node 22+, Docker Desktop, and Python 3 (for the fixture generator only).
+---
+
+## ⚡ Quick Start
+
+Requires Node 22+, Docker Desktop (optional if connecting to remote Supabase), and Python 3.
 
 ```bash
-npm install                 # root tooling
+# 1. Install dependencies
+npm install
 npm --prefix apps/web install
 
-npm run db:start            # local Supabase stack, applies all migrations
-npm run db:seed             # demo firm + two client workspaces to sign into
+# 2. Configure Environment (.env.local in apps/web)
+NEXT_PUBLIC_SUPABASE_URL=https://jweclsvkndyvltchnbcl.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_JY2wD5RWkxDH2TCjvhOlVw_ybsoGf2r
+HERMES_AGENT_ENDPOINT=http://YOUR_HOSTINGER_VPS_IP:8000
+HERMES_API_SECRET=hermes_sec_key_prod_987654321
+
+# 3. Start AnalyzeIt Dashboard
 npm run dev                 # http://127.0.0.1:3100
 ```
 
-Sign in as `demo@example.test` / `demo-password-123`, or create your own account at `/signup`
-(local email confirmation is off, so signup is immediate). Re-run `npm run db:seed` after any
-`npm run db:reset` to put the demo account back — it refuses to run against anything other than a
-local stack.
+---
 
-`npm run db:start` prints the local keys. They are already in `apps/web/.env.local`; if you reset
-the stack and they change, copy them across from that output.
+## 🤖 24/7 Hermes Agent Hosting (Hostinger VPS)
 
-The local stack runs on ports `544xx` rather than the Supabase defaults, so it can coexist with
-another project's stack on the same machine.
-
-## Tests
+Hermes Agent runs continuously on a Hostinger VPS to process messy client workbooks autonomously. See [`HERMES_HOSTINGER_DEPLOYMENT.md`](./HERMES_HOSTINGER_DEPLOYMENT.md) for full setup instructions:
 
 ```bash
-npm run test:isolation      # cross-tenant isolation + append-only guarantees
-npm run test:e2e            # full upload flow against the running dev server
+# Hostinger VPS Quick Commands
+pm2 start "venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000" --name "hermes-agent"
+pm2 logs hermes-agent
 ```
 
-`test:isolation` is the one that matters most. Two accounting firms sharing one database is the
-entire risk model of this product (PRD section 13), and this suite is what proves the separation
-holds. It also verifies the append-only triggers using the service-role key — the most privileged
-client in the system. **If it goes red, nothing else about a release matters.**
+---
 
-`test:e2e` needs the dev server running. It drives the real HTTP routes rather than the database,
-so it covers the session handling, the authorization checks in the route handlers and the signed
-upload URL.
+## 🧪 Tests & Quality Controls
 
-## What Phase 1 built
+```bash
+npm run test:isolation      # Cross-tenant isolation + append-only database triggers
+npm run test:e2e            # Full upload & API authorization flow test
+```
 
-| Area | Detail |
-|---|---|
-| **Tenancy** | Organizations (firms) → client workspaces. Workspaces are the unit the pricing model meters (section 14). |
-| **Isolation** | Supabase RLS *plus* independent server-side authorization on every path (section 13). Neither is trusted alone. |
-| **Immutability** | `dataset_versions` and `audit_logs` are append-only, enforced by database triggers rather than application code. `raw_uploads` permits exactly one `pending → stored` transition and nothing else. |
-| **Storage** | Private `raw` / `parquet` / `exports` buckets, keyed `{org_id}/{workspace_id}/{YYYY-MM}/{upload_id}__{filename}`. |
-| **Uploads** | Browser → storage directly via a signed upload URL; the Next.js server never handles the bytes. |
-| **Audit** | Every action written in the same transaction as the change that caused it. |
+---
 
-### Design decisions worth knowing
+## 🎨 UI/UX Features (UI Pro Max Upgrade)
 
-**Writes go through `SECURITY DEFINER` RPCs, not direct inserts.** `create_organization` and
-`create_workspace` write the entity and its audit row in one transaction. If application code did
-that in two statements, any crash or early return between them would leave an action with no audit
-record — and section 13 asks for an immutable trail, not a mostly-complete one.
-
-**Authenticated users hold `SELECT` and nothing else.** There is no `INSERT`/`UPDATE`/`DELETE`
-policy on any table, and absence of a policy is a deny. A stolen publishable key reads nothing it
-should not and writes nothing at all.
-
-**The service role is fenced.** It bypasses RLS, so `adminFor()` in `apps/web/src/lib/authz.ts`
-takes an already-proven access context as its argument. The ordering — check first, construct the
-privileged client second — is then visible at every call site instead of relying on memory.
-
-**Version 0 exists from the first upload.** Cleaning never mutates; it writes a new version with a
-parent pointer (section 3). Week 2's Parquet output already has a v0 to descend from.
-
-## Next: Week 2
-
-Messy workbook parser, schema and type inference, Parquet writes, and the eval harness scaffold.
-`fixtures/messy/acme-sales-2026-08.xlsx` is already there to build against — it carries the full
-list of section 6 pathologies (header off row 1, merged cells, subtotal and blank rows, mixed date
-conventions, parentheses negatives, numbers as text, a trailing total row, footnotes, and a second
-sheet). Regenerate it with `npm run fixtures`.
+- **OLED Dark Mode**: Deep slate surfaces (`#020617`), high contrast typography, and emerald indicator glows (`#10b981`).
+- **Interactive Dropzone**: Drag-and-drop workbook upload with SHA-256 fingerprinting and progress bars.
+- **Sidebar Shell**: Practice firm selector, workspace navigation, and active role badges.
+- **KPI Metrics Overview**: Workspaces, active recipes, automation rate %, and immutable lineage indicators.

@@ -94,7 +94,7 @@ export default async function AppHomePage() {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--az-text-subtle)' }}>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Workspaces ({workspaces.length})
             </h2>
           </div>
@@ -104,23 +104,23 @@ export default async function AppHomePage() {
               <li key={workspace.id} className="az-animate-in">
                 <Link href={`/app/workspaces/${workspace.id}`} className="block">
                   <Card hover variant="gradient" className="group relative overflow-hidden">
-                    {/* Top Accent Strip */}
+                    {/* Top Glowing Emerald Accent Strip */}
                     <div
                       className="absolute left-0 top-0 h-1 w-full"
-                      style={{ background: 'var(--az-gradient-brand)' }}
+                      style={{ background: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' }}
                     />
 
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-base font-bold transition-colors group-hover:text-[var(--az-primary-600)]" style={{ color: 'var(--az-text)' }}>
+                        <p className="truncate text-base font-extrabold text-slate-100 transition-colors group-hover:text-emerald-400">
                           {workspace.name}
                         </p>
                         {workspace.client_name ? (
-                          <p className="mt-0.5 truncate text-xs font-medium" style={{ color: 'var(--az-text-muted)' }}>
+                          <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">
                             {workspace.client_name}
                           </p>
                         ) : (
-                          <p className="mt-0.5 text-xs italic" style={{ color: 'var(--az-text-subtle)' }}>
+                          <p className="mt-0.5 text-xs italic text-slate-500">
                             No client details
                           </p>
                         )}
@@ -128,13 +128,13 @@ export default async function AppHomePage() {
                       <StatusBadge status={workspace.status} />
                     </div>
 
-                    <div className="mt-6 flex items-center justify-between border-t pt-3 text-xs" style={{ borderColor: 'var(--az-border)' }}>
-                      <span style={{ color: 'var(--az-text-subtle)' }}>
+                    <div className="mt-6 flex items-center justify-between border-t border-slate-800/80 pt-3 text-xs">
+                      <span className="text-slate-500">
                         Created {new Date(workspace.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </span>
-                      <span className="flex items-center gap-1 font-semibold group-hover:translate-x-0.5 transition-transform" style={{ color: 'var(--az-primary-500)' }}>
-                        View Workspace
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <span className="flex items-center gap-1 font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">
+                        Open Pipeline
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="9 18 15 12 9 6" />
                         </svg>
                       </span>

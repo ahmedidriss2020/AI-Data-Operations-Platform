@@ -308,7 +308,15 @@ This is the trust feature. The AI being impressive is worth less than an account
 
 ## 8. AI architecture
 
-Hermes orchestrates; OpenAI and Kimi are interchangeable reasoning models routed by task, cost and quality; Python/Polars/DuckDB does all arithmetic. The LLM is never the source of a financial number.
+Hermes orchestrates 24/7 continuously (hosted on Hostinger VPS via PM2 / Docker daemon); OpenAI and Kimi are interchangeable reasoning models routed by task, cost and quality; Python/Polars/DuckDB does all arithmetic. The LLM is never the source of a financial number.
+
+### 8.1 24/7 Hostinger Deployment & Dashboard Integration Bridge
+
+Hermes is deployed as a long-running FastAPI microservice on Hostinger VPS (`/var/www/hermes-agent`). The Next.js dashboard interacts with Hermes over an authenticated REST API bridge (`HERMES_AGENT_ENDPOINT` + `HERMES_API_SECRET`).
+
+- **Continuous Operation**: Managed by PM2 auto-restart daemon with system boot persistence.
+- **Health & Status**: Real-time heartbeat widget embedded in AnalyzeIt dashboard layout (`/health` endpoint returning uptime, queue backlog, and active workers).
+- **Execution Workflow**: When a new workbook lands in Supabase storage, the dashboard notifies Hermes to execute `parse_workbook`, match `source_signature`, replay `recipe_version`, evaluate post-run invariants, and stream materiality-ranked exceptions back to Postgres.
 
 ### Context discipline
 

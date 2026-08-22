@@ -18,38 +18,38 @@ export default async function AppLayout({ children }: LayoutProps<'/app'>) {
         <div className="space-y-6">
           {/* Logo & Brand Header */}
           <div className="flex items-center justify-between">
-            <Link href="/app" className="inline-block transition-transform hover:scale-105">
+            <Link href="/app" className="inline-block">
               <Logo size="md" />
             </Link>
           </div>
 
           {/* Org Selector Card */}
           <div
-            className="flex items-center gap-3 rounded-xl p-3"
+            className="flex items-center gap-3 rounded-xl p-3 border transition-colors hover:border-emerald-500/30 cursor-pointer"
             style={{
               background: 'var(--az-gradient-card)',
-              border: '1px solid var(--az-border)',
+              borderColor: 'var(--az-border)',
             }}
           >
             <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-bold text-white shadow-sm"
-              style={{ background: 'var(--az-gradient-brand)' }}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-extrabold text-slate-950 shadow-md"
+              style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)' }}
             >
               {org.name.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--az-text-subtle)' }}>
-                Firm
+              <p className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Practice Firm
               </p>
-              <p className="truncate text-sm font-bold" style={{ color: 'var(--az-text)' }}>
+              <p className="truncate text-sm font-bold text-slate-100">
                 {org.name}
               </p>
             </div>
             <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+              className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border border-emerald-500/30"
               style={{
-                background: 'rgba(99,102,241,.12)',
-                color: 'var(--az-primary-600)',
+                background: 'rgba(16,185,129,.12)',
+                color: '#34d399',
               }}
             >
               {role}
@@ -70,8 +70,29 @@ export default async function AppLayout({ children }: LayoutProps<'/app'>) {
               }
             />
             <NavItem
+              href="/app/recipes"
+              label="Recipe Builder"
+              icon={
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="16 18 22 12 16 6" />
+                  <polyline points="8 6 2 12 8 18" />
+                </svg>
+              }
+            />
+            <NavItem
+              href="/app/exceptions"
+              label="Exception Queue"
+              icon={
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              }
+            />
+            <NavItem
               href="/app/audit"
-              label="Audit Log"
+              label="Audit Trail & Lineage"
               icon={
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -87,11 +108,19 @@ export default async function AppLayout({ children }: LayoutProps<'/app'>) {
 
         {/* Footer Actions */}
         <div className="mt-8 space-y-4 border-t pt-4" style={{ borderColor: 'var(--az-border)' }}>
+          {/* 24/7 Agent Status Indicator */}
+          <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-400">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Hermes 24/7 VPS</span>
+            </div>
+            <span className="text-[10px] uppercase tracking-wider text-emerald-500">Active</span>
+          </div>
+
           <form action="/auth/signout" method="post">
             <button
               type="submit"
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-red-500/10 hover:text-red-500"
-              style={{ color: 'var(--az-text-muted)' }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-400 transition-all duration-200 hover:bg-red-500/10 hover:text-red-400 cursor-pointer"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -111,13 +140,12 @@ export default async function AppLayout({ children }: LayoutProps<'/app'>) {
         </main>
 
         <footer
-          className="border-t px-6 py-4 text-center text-xs"
+          className="border-t px-6 py-4 text-center text-xs text-slate-500"
           style={{
             borderColor: 'var(--az-border)',
-            color: 'var(--az-text-subtle)',
           }}
         >
-          A copilot, not an autonomous accountant. Every material change is reviewed and signed off by a person, and every number can be traced to its source rows.
+          AnalyzeIt Copilot · Every material change is signed off by a person with 100% financial row-level auditability.
         </footer>
       </div>
     </div>

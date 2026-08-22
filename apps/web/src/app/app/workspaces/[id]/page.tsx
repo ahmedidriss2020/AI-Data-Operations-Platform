@@ -84,19 +84,19 @@ export default async function WorkspacePage({ params }: PageProps<'/app/workspac
 
       <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">
         <section className="space-y-3">
-          <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--az-text-subtle)' }}>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
             Upload Client Export
           </h2>
           <Card variant="gradient">
             <UploadPanel workspaceId={workspace.id} datasets={datasets ?? []} />
           </Card>
-          <p className="text-xs" style={{ color: 'var(--az-text-subtle)' }}>
+          <p className="text-xs text-slate-500">
             🔒 Raw uploads are stored immutably with SHA-256 signatures. Recipe transformations generate new lineage versions without mutating source files.
           </p>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--az-text-subtle)' }}>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
             Upload History & Datasets
           </h2>
 
@@ -107,15 +107,16 @@ export default async function WorkspacePage({ params }: PageProps<'/app/workspac
             />
           ) : (
             <Card padding="none" className="overflow-hidden">
-              <ul className="divide-y" style={{ borderColor: 'var(--az-border)' }}>
+              <ul className="divide-y border-slate-800/80">
                 {uploads.map((upload) => (
-                  <li key={upload.id} className="flex flex-wrap items-center justify-between gap-4 p-4 transition-colors hover:bg-[var(--az-bg-subtle)]">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <li key={upload.id} className="flex flex-wrap items-center justify-between gap-4 p-4 transition-colors hover:bg-slate-800/50 cursor-pointer">
+                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
                       <div
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl p-2"
                         style={{
-                          background: 'var(--az-gradient-card)',
-                          color: 'var(--az-primary-500)',
+                          background: 'rgba(16,185,129,.12)',
+                          color: '#34d399',
+                          border: '1px solid rgba(16,185,129,.3)',
                         }}
                       >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -124,11 +125,11 @@ export default async function WorkspacePage({ params }: PageProps<'/app/workspac
                         </svg>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold" style={{ color: 'var(--az-text)' }}>
+                        <p className="truncate text-sm font-bold text-slate-100">
                           {upload.original_filename}
                         </p>
-                        <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--az-text-muted)' }}>
-                          <span className="font-semibold" style={{ color: 'var(--az-primary-600)' }}>
+                        <p className="mt-0.5 truncate text-xs text-slate-400">
+                          <span className="font-semibold text-emerald-400">
                             {upload.dataset_id ? datasetNames.get(upload.dataset_id) ?? 'Dataset' : 'Unassigned'}
                           </span>
                           {' · '}
