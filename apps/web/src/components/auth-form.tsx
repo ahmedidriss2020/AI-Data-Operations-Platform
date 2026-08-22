@@ -5,13 +5,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 import { createBrowserSupabase } from '@/lib/supabase/client';
-import { ErrorText, Field, buttonClass, inputClass } from '@/components/ui';
+import { ErrorText, Field, Spinner, buttonClass, buttonStyle, inputClass, inputFocusHandler, inputStyle } from '@/components/ui';
 
-/**
- * Email + password auth against Supabase, run from the browser so the session
- * cookie is established by the Supabase client itself and the proxy can then
- * refresh it on every subsequent request.
- */
 export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -38,24 +33,20 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
       return;
     }
 
-    // A brand-new user has no organization yet; /app sends them to onboarding.
     router.replace('/app');
     router.refresh();
   }
 
   return (
-    // method="post" matters even though onSubmit handles the submission and
-    // calls preventDefault. If the page has not hydrated -- a chunk fails to
-    // load, JS is blocked, the network drops mid-load -- the browser falls back
-    // to submitting natively, and an HTML form with no method defaults to GET.
-    // That puts the password in the URL, and from there into browser history,
-    // the referrer header and every access log along the way.
     <form onSubmit={onSubmit} method="post" className="space-y-4">
       <Field label="Work email">
         <input
           className={inputClass}
+          style={inputStyle}
+          {...inputFocusHandler}
           type="email"
           name="email"
+          placeholder="name@firm.com"
           autoComplete="email"
           required
           value={email}
@@ -69,8 +60,11 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
       >
         <input
           className={inputClass}
+          style={inputStyle}
+          {...inputFocusHandler}
           type="password"
           name="password"
+          placeholder="••••••••"
           autoComplete={isSignup ? 'new-password' : 'current-password'}
           required
           minLength={6}
@@ -81,13 +75,22 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
 
       <ErrorText>{error}</ErrorText>
 
-      <button className={`${buttonClass} w-full`} type="submit" disabled={pending}>
-        {pending ? 'Working…' : isSignup ? 'Create account' : 'Sign in'}
+      <button className={`${buttonClass} w-full`} style={buttonStyle} type="submit" disabled={pending}>
+        {pending ? (
+          <>
+            <Spinner size={18} />
+            <span>Processing...</span>
+          </>
+        ) : isSignup ? (
+          'Create Account'
+        ) : (
+          'Sign In'
+        )}
       </button>
 
-      <p className="text-center text-sm opacity-70">
+      <p className="pt-2 text-center text-xs font-medium" style={{ color: 'var(--az-text-muted)' }}>
         {isSignup ? 'Already have an account? ' : 'No account yet? '}
-        <Link className="underline" href={isSignup ? '/login' : '/signup'}>
+        <Link className="font-semibold transition-colors hover:underline" style={{ color: 'var(--az-primary-600)' }} href={isSignup ? '/login' : '/signup'}>
           {isSignup ? 'Sign in' : 'Create one'}
         </Link>
       </p>

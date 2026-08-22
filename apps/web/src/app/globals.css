@@ -1,26 +1,275 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   AnalyzeIt — Design System Tokens
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand palette */
+  --az-primary-50:  #eef2ff;
+  --az-primary-100: #e0e7ff;
+  --az-primary-200: #c7d2fe;
+  --az-primary-300: #a5b4fc;
+  --az-primary-400: #818cf8;
+  --az-primary-500: #6366f1;
+  --az-primary-600: #4f46e5;
+  --az-primary-700: #4338ca;
+  --az-primary-800: #3730a3;
+  --az-primary-900: #312e81;
+
+  --az-accent-400: #f472b6;
+  --az-accent-500: #ec4899;
+  --az-accent-600: #db2777;
+
+  --az-success-400: #34d399;
+  --az-success-500: #10b981;
+  --az-success-600: #059669;
+
+  --az-warning-400: #fbbf24;
+  --az-warning-500: #f59e0b;
+  --az-warning-600: #d97706;
+
+  --az-danger-400: #f87171;
+  --az-danger-500: #ef4444;
+  --az-danger-600: #dc2626;
+
+  /* Surfaces */
+  --az-bg:           #f8fafc;
+  --az-bg-subtle:    #f1f5f9;
+  --az-bg-card:      #ffffff;
+  --az-bg-elevated:  #ffffff;
+  --az-bg-sidebar:   #ffffff;
+  --az-bg-input:     #ffffff;
+
+  /* Text */
+  --az-text:         #0f172a;
+  --az-text-muted:   #64748b;
+  --az-text-subtle:  #94a3b8;
+  --az-text-inverse: #ffffff;
+
+  /* Borders */
+  --az-border:       #e2e8f0;
+  --az-border-muted: #f1f5f9;
+  --az-border-focus: #818cf8;
+
+  /* Shadows */
+  --az-shadow-sm:  0 1px 2px rgba(0,0,0,.05);
+  --az-shadow-md:  0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -2px rgba(0,0,0,.05);
+  --az-shadow-lg:  0 10px 15px -3px rgba(0,0,0,.08), 0 4px 6px -4px rgba(0,0,0,.04);
+  --az-shadow-xl:  0 20px 25px -5px rgba(0,0,0,.08), 0 8px 10px -6px rgba(0,0,0,.04);
+  --az-shadow-glow: 0 0 20px rgba(99,102,241,.15);
+
+  /* Radii */
+  --az-radius-sm:  6px;
+  --az-radius-md:  10px;
+  --az-radius-lg:  14px;
+  --az-radius-xl:  20px;
+  --az-radius-full: 9999px;
+
+  /* Transitions */
+  --az-transition-fast:   150ms cubic-bezier(.4,0,.2,1);
+  --az-transition-base:   200ms cubic-bezier(.4,0,.2,1);
+  --az-transition-smooth: 300ms cubic-bezier(.4,0,.2,1);
+  --az-transition-spring: 500ms cubic-bezier(.34,1.56,.64,1);
+
+  /* Sidebar */
+  --az-sidebar-width: 260px;
+  --az-sidebar-collapsed: 72px;
+
+  /* Gradient */
+  --az-gradient-brand: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+  --az-gradient-hero:  linear-gradient(135deg, #312e81 0%, #4338ca 30%, #6366f1 60%, #8b5cf6 100%);
+  --az-gradient-card:  linear-gradient(135deg, rgba(99,102,241,.06) 0%, rgba(168,85,247,.04) 100%);
+  --az-gradient-glow:  radial-gradient(ellipse at 50% 0%, rgba(99,102,241,.15), transparent 70%);
 }
 
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --az-bg:           #0b0f1a;
+    --az-bg-subtle:    #111827;
+    --az-bg-card:      #151c2c;
+    --az-bg-elevated:  #1a2236;
+    --az-bg-sidebar:   #0f1525;
+    --az-bg-input:     #1a2236;
+
+    --az-text:         #f1f5f9;
+    --az-text-muted:   #94a3b8;
+    --az-text-subtle:  #64748b;
+    --az-text-inverse: #0f172a;
+
+    --az-border:       #1e293b;
+    --az-border-muted: #1a2236;
+    --az-border-focus: #818cf8;
+
+    --az-shadow-sm:  0 1px 2px rgba(0,0,0,.3);
+    --az-shadow-md:  0 4px 6px -1px rgba(0,0,0,.4), 0 2px 4px -2px rgba(0,0,0,.3);
+    --az-shadow-lg:  0 10px 15px -3px rgba(0,0,0,.4), 0 4px 6px -4px rgba(0,0,0,.3);
+    --az-shadow-xl:  0 20px 25px -5px rgba(0,0,0,.5), 0 8px 10px -6px rgba(0,0,0,.3);
+    --az-shadow-glow: 0 0 30px rgba(99,102,241,.2);
+
+    --az-gradient-card: linear-gradient(135deg, rgba(99,102,241,.08) 0%, rgba(168,85,247,.05) 100%);
+    --az-gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(99,102,241,.2), transparent 70%);
+  }
+}
+
+/* Tailwind theme integration */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--az-bg);
+  --color-foreground: var(--az-text);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ==========================================================================
+   Base / Reset
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--az-bg);
+  color: var(--az-text);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--az-primary-200);
+  color: var(--az-primary-900);
+}
+
+@media (prefers-color-scheme: dark) {
+  ::selection {
+    background: var(--az-primary-700);
+    color: var(--az-primary-100);
+  }
+}
+
+/* ==========================================================================
+   Scrollbar
+   ========================================================================== */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--az-border);
+  border-radius: var(--az-radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--az-text-subtle);
+}
+
+/* ==========================================================================
+   Keyframe Animations
+   ========================================================================== */
+
+@keyframes az-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes az-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes az-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes az-scale-in {
+  from { opacity: 0; transform: scale(.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes az-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes az-pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .6; }
+}
+
+@keyframes az-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes az-gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes az-bounce-in {
+  0%   { transform: scale(0); opacity: 0; }
+  50%  { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Utility classes for animations */
+.az-animate-in {
+  animation: az-slide-up var(--az-transition-smooth) both;
+}
+
+.az-animate-fade {
+  animation: az-fade-in var(--az-transition-base) both;
+}
+
+.az-animate-scale {
+  animation: az-scale-in var(--az-transition-smooth) both;
+}
+
+/* Staggered animation delays for lists */
+.az-stagger > :nth-child(1)  { animation-delay: 0ms; }
+.az-stagger > :nth-child(2)  { animation-delay: 50ms; }
+.az-stagger > :nth-child(3)  { animation-delay: 100ms; }
+.az-stagger > :nth-child(4)  { animation-delay: 150ms; }
+.az-stagger > :nth-child(5)  { animation-delay: 200ms; }
+.az-stagger > :nth-child(6)  { animation-delay: 250ms; }
+.az-stagger > :nth-child(7)  { animation-delay: 300ms; }
+.az-stagger > :nth-child(8)  { animation-delay: 350ms; }
+.az-stagger > :nth-child(9)  { animation-delay: 400ms; }
+.az-stagger > :nth-child(10) { animation-delay: 450ms; }
+
+/* ==========================================================================
+   Focus States
+   ========================================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--az-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--az-radius-sm);
+}
+
+/* ==========================================================================
+   Glass Effect Utility
+   ========================================================================== */
+
+.az-glass {
+  background: rgba(255, 255, 255, .7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, .2);
+}
+
+@media (prefers-color-scheme: dark) {
+  .az-glass {
+    background: rgba(15, 21, 37, .75);
+    border-color: rgba(255, 255, 255, .08);
+  }
 }

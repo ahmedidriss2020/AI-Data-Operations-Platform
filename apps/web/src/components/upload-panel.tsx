@@ -11,7 +11,7 @@ import {
   isAcceptedFilename,
   mimeForFilename,
 } from '@/lib/storage';
-import { ErrorText, Field, buttonClass, inputClass } from '@/components/ui';
+import { ErrorText, Field, ProgressBar, Spinner, buttonClass, buttonStyle, inputClass, inputFocusHandler, inputStyle } from '@/components/ui';
 
 type Dataset = { id: string; name: string };
 
@@ -19,18 +19,18 @@ type Phase = 'idle' | 'hashing' | 'uploading' | 'finalising';
 
 const PHASE_LABEL: Record<Phase, string> = {
   idle: '',
-  hashing: 'Fingerprinting file…',
-  uploading: 'Uploading…',
-  finalising: 'Recording…',
+  hashing: 'Fingerprinting file (SHA-256)…',
+  uploading: 'Uploading to encrypted storage…',
+  finalising: 'Recording version & audit entry…',
 };
 
-/**
- * Three-step upload: reserve, PUT straight to storage, confirm.
- *
- * The bytes never pass through the Next.js server. Beyond avoiding body-size
- * limits, it keeps the raw customer workbook on exactly one hop between the
- * accountant's machine and private storage.
- */
+const PHASE_PROGRESS: Record<Phase, number> = {
+  idle: 0,
+  hashing: 25,
+  uploading: 70,
+  finalising: 95,
+};
+
 export function UploadPanel({
   workspaceId,
   datasets,
@@ -44,29 +44,38 @@ export function UploadPanel({
   const [error, setError] = useState<string | null>(null);
   const [datasetId, setDatasetId] = useState<string>(datasets[0]?.id ?? '');
   const [datasetName, setDatasetName] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const creatingNewDataset = datasetId === '';
   const busy = phase !== 'idle';
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleFileChange(file: File | undefined) {
+    if (!file) return;
     setError(null);
-
-    const file = inputRef.current?.files?.[0];
-    if (!file) {
-      setError('Choose a file first');
-      return;
-    }
     if (!isAcceptedFilename(file.name)) {
       setError(`Only ${ACCEPTED_EXTENSIONS.join(', ')} files are accepted`);
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      setError(`File is ${formatBytes(file.size)}; the limit is ${formatBytes(MAX_UPLOAD_BYTES)}`);
+      setError(`File is ${formatBytes(file.size)}; maximum allowed is ${formatBytes(MAX_UPLOAD_BYTES)}`);
       return;
     }
+    setSelectedFile(file);
+  }
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+
+    const file = selectedFile || inputRef.current?.files?.[0];
+    if (!file) {
+      setError('Select a file to upload first');
+      return;
+    }
+
     if (creatingNewDataset && datasetName.trim().length < 2) {
-      setError('Name the recurring dataset this file belongs to');
+      setError('Provide a name for the new recurring dataset');
       return;
     }
 
@@ -90,12 +99,6 @@ export function UploadPanel({
       const signed = await signResponse.json();
       if (!signResponse.ok) throw new Error(signed.error ?? 'Could not start the upload');
 
-      // The storage client ignores its own contentType option when the body is
-      // a Blob -- it builds a FormData and the type comes from the blob itself.
-      // So set the type on the blob, and derive it from the extension rather
-      // than trusting file.type: Windows reports an empty type for .xlsx when
-      // the extension is not registered, which the bucket then rejects as
-      // application/octet-stream.
       const body = new File([file], file.name, { type: mimeForFilename(file.name) });
 
       const supabase = createBrowserSupabase();
@@ -116,6 +119,7 @@ export function UploadPanel({
       if (!completeResponse.ok) throw new Error(completed.error ?? 'Could not record the upload');
 
       if (inputRef.current) inputRef.current.value = '';
+      setSelectedFile(null);
       setDatasetName('');
       if (signed.datasetId) setDatasetId(signed.datasetId);
       router.refresh();
@@ -127,16 +131,15 @@ export function UploadPanel({
   }
 
   return (
-    // method="post" for the same reason as the sign-in form: an unhydrated page
-    // would otherwise submit natively as a GET and put the field values in the
-    // URL.
-    <form onSubmit={onSubmit} method="post" className="space-y-4">
+    <form onSubmit={onSubmit} method="post" className="space-y-5">
       <Field
-        label="Recurring dataset"
-        hint="Group each month's file under the same dataset. From Week 2 the parser matches this automatically."
+        label="Recurring Dataset"
+        hint="Group monthly client exports together under a versioned dataset."
       >
         <select
           className={inputClass}
+          style={inputStyle}
+          {...inputFocusHandler}
           value={datasetId}
           onChange={(e) => setDatasetId(e.target.value)}
           disabled={busy}
@@ -146,52 +149,117 @@ export function UploadPanel({
               {dataset.name}
             </option>
           ))}
-          <option value="">+ New dataset…</option>
+          <option value="">+ New recurring dataset…</option>
         </select>
       </Field>
 
-      {creatingNewDataset ? (
-        <Field label="New dataset name">
+      {creatingNewDataset && (
+        <Field label="New Dataset Name">
           <input
             className={inputClass}
+            style={inputStyle}
+            {...inputFocusHandler}
             value={datasetName}
             onChange={(e) => setDatasetName(e.target.value)}
-            placeholder="e.g. Monthly sales export"
+            placeholder="e.g. Monthly Sales & Ledger Export"
             maxLength={200}
             disabled={busy}
           />
         </Field>
-      ) : null}
+      )}
 
-      <Field label="File" hint={`${ACCEPTED_EXTENSIONS.join(', ')} · up to ${formatBytes(MAX_UPLOAD_BYTES)}`}>
-        <input
-          ref={inputRef}
-          className={inputClass}
-          type="file"
-          accept={ACCEPTED_EXTENSIONS.join(',')}
-          disabled={busy}
-        />
+      {/* Drag & Drop File Zone */}
+      <Field label="Upload File" hint={`Supports ${ACCEPTED_EXTENSIONS.join(', ')} · Up to ${formatBytes(MAX_UPLOAD_BYTES)}`}>
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragActive(false);
+            const file = e.dataTransfer.files?.[0];
+            handleFileChange(file);
+          }}
+          onClick={() => inputRef.current?.click()}
+          className="group relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center transition-all duration-200"
+          style={{
+            borderColor: dragActive ? 'var(--az-primary-500)' : selectedFile ? 'var(--az-success-500)' : 'var(--az-border)',
+            background: dragActive ? 'rgba(99,102,241,.06)' : selectedFile ? 'rgba(16,185,129,.04)' : 'var(--az-bg-card)',
+          }}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            className="hidden"
+            accept={ACCEPTED_EXTENSIONS.join(',')}
+            disabled={busy}
+            onChange={(e) => handleFileChange(e.target.files?.[0])}
+          />
+
+          <div
+            className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl transition-transform group-hover:scale-110"
+            style={{
+              background: selectedFile ? 'rgba(16,185,129,.1)' : 'var(--az-gradient-card)',
+              color: selectedFile ? 'var(--az-success-500)' : 'var(--az-primary-500)',
+            }}
+          >
+            {selectedFile ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            )}
+          </div>
+
+          {selectedFile ? (
+            <div>
+              <p className="text-sm font-bold" style={{ color: 'var(--az-text)' }}>
+                {selectedFile.name}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--az-text-muted)' }}>
+                {formatBytes(selectedFile.size)} — Click or drop to replace
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--az-text)' }}>
+                Click to select or drag and drop workbook
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--az-text-subtle)' }}>
+                Raw files are hashed, versioned, and stored unchanged
+              </p>
+            </div>
+          )}
+        </div>
       </Field>
+
+      {busy && (
+        <div className="az-animate-in">
+          <ProgressBar progress={PHASE_PROGRESS[phase]} label={PHASE_LABEL[phase]} />
+        </div>
+      )}
 
       <ErrorText>{error}</ErrorText>
 
-      <div className="flex items-center gap-3">
-        <button className={buttonClass} type="submit" disabled={busy}>
-          {busy ? PHASE_LABEL[phase] : 'Upload'}
-        </button>
-        {busy ? <span className="text-sm opacity-60">{PHASE_LABEL[phase]}</span> : null}
-      </div>
+      <button className={`${buttonClass} w-full`} style={buttonStyle} type="submit" disabled={busy || !selectedFile}>
+        {busy ? (
+          <>
+            <Spinner size={18} />
+            <span>Processing Upload...</span>
+          </>
+        ) : (
+          'Upload & Fingerprint'
+        )}
+      </button>
     </form>
   );
 }
 
-/**
- * SHA-256 of the file, computed in the browser.
- *
- * Not a security control -- the client could send any string. It is the signal
- * for "this client re-sent last month's file", which the deviation engine will
- * want in Week 4 and which is cheap to capture now.
- */
 async function sha256Hex(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest('SHA-256', buffer);
