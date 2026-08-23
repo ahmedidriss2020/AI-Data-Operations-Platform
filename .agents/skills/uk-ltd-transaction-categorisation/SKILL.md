@@ -3,7 +3,7 @@ name: uk-ltd-transaction-categorisation
 description: "Use when processing bank or card statements (Excel/CSV/XLSX) for a UK limited company and assigning each transaction to a nominal category for statutory accounts and a CT600 corporation tax return. Triggers: bank statement, card statement, transaction categorisation, nominal coding, chart of accounts mapping, allowable vs disallowable expenditure, capital vs revenue, director's loan account, CT600, corporation tax computation, add-backs, capital allowances, bookkeeping clean-up for a UK Ltd. Also use when building or reviewing recipe steps, mapping tables or exception rules that perform this categorisation inside AnalyzeIt, or in the controlled tool layer the Hermes agent calls."
 metadata:
   author: AnalyzeIt
-  version: "1.1.0"
+  version: "1.2.0"
   jurisdiction: "United Kingdom — private companies limited by shares (Ltd)"
   rates_verified_to: "2026-08"
 ---
@@ -478,9 +478,14 @@ Three boundaries follow from that, and none of them are optional:
   key are never exposed to the browser, never returned in a tool result, and
   never written into an exception note.
 
-Reasoning runs on **Kimi K3** behind the agent abstraction (PRD v3 §12). Write
-nothing in this workflow that depends on a specific model's behaviour — the
-runtime is meant to be replaceable without touching the categorisation logic.
+Reasoning is served through **OpenRouter** behind the model abstraction
+(PRD v3 §11.1) — `google/gemini-3.7-flash` primary, Kimi K3 secondary, with the
+`:batch` variant for overnight statement runs. The OpenRouter key belongs to the
+AnalyzeIt backend, never to the browser and never to a tool result.
+
+Write nothing in this workflow that depends on a specific model's behaviour. No
+prompt, recipe step or categorisation rule may be tuned to one model's quirks —
+swapping the primary model must be a config change, never a code change.
 
 ### 5.1 Tool contract
 

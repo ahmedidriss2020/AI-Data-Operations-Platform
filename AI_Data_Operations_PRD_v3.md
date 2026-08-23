@@ -11,13 +11,13 @@ A workflow-learning data-operations copilot for accounting practices. AnalyzeIt 
 | **Initial commercial target** | UK → selected Europe → Canada → US |
 | **Core value** | Automate recurring financial-data operations while keeping accountants in control |
 | **AI runtime** | Hermes Agent on Hostinger |
-| **Reasoning** | Kimi K3 API, with model abstraction for future providers |
+| **Reasoning** | Gemini 3.7 Flash via OpenRouter (primary); Kimi K3 (secondary), behind a model abstraction |
 | **Data / compute** | Supabase + Supabase Storage + DuckDB + Polars |
 | **Future AI runtime** | DeepSeek Harness, introduced later behind an abstraction layer after production validation |
 | **Frontend** | Next.js / AnalyzeIt dashboard |
 | **Status** | MVP / pilot-ready architecture |
 
-> Supersedes `AI_Data_Operations_PRD_v2.md`. The core data engine, recipe loop and deviation model carry over unchanged; what changes is the agent runtime strategy, the reasoning provider, dashboard separation and the controlled tool boundary.
+> Supersedes `AI_Data_Operations_PRD_v2.md`. The core data engine, recipe loop and deviation model carry over unchanged; what changes is the agent runtime strategy, the reasoning provider and its routing, dashboard separation and the controlled tool boundary.
 
 ---
 
@@ -53,7 +53,9 @@ The product's moat is the **recipe loop**: Month 1 teaches the system a client's
               │   Hermes Agent           │
               │   Hostinger · 24/7       │
               └──────────────────────────┘
-                            │  Kimi K3 API
+                            │  OpenRouter
+                            │  google/gemini-3.7-flash (primary)
+                            │  Kimi K3 (secondary)
               ┌─────────────┼─────────────┐
               ▼             ▼             ▼
            Parser        DuckDB        Polars
@@ -196,9 +198,45 @@ Recommended flow:
 browser → AnalyzeIt server/API → authenticated Hermes API → Hermes tools → Supabase / DuckDB / Polars
 ```
 
-Never expose the Hermes secret or the Kimi API key to the browser. Keep Hermes behind a secure domain / reverse proxy or Hostinger's managed access layer.
+Never expose the Hermes secret or the OpenRouter API key to the browser. Keep Hermes behind a secure domain / reverse proxy or Hostinger's managed access layer.
 
 The frontend should know only the AnalyzeIt API contract, never Hermes internals. This allows future replacement or addition of another agent runtime without redesigning the customer UI.
+
+---
+
+### 11.1 Model routing
+
+Reasoning is served through **OpenRouter**, an OpenAI-compatible gateway. One
+key, one base URL, and the model is a configuration value rather than a code
+dependency:
+
+```env
+OPENROUTER_API_KEY=<server-side only, never in the browser>
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+MODEL_PRIMARY=google/gemini-3.7-flash
+MODEL_SECONDARY=moonshotai/kimi-k3
+MODEL_BATCH=google/gemini-3.7-flash:batch
+```
+
+| Role | Model | Rationale |
+|---|---|---|
+| **Primary** | `google/gemini-3.7-flash` | 1M context, 65K max output, ~$0.375 / $1.875 per M tokens. Fast and cheap enough to run per-transaction categorisation at volume |
+| **Secondary** | Kimi K3 | Failover, and the comparison arm when measuring categorisation quality |
+| **Batch** | `google/gemini-3.7-flash:batch` | Monthly statement runs are not latency-sensitive; the batch variant is the cheaper path for overnight processing |
+
+**Where the model call originates matters.** Hostinger's managed Hermes app
+configures a provider from a fixed list (nexos.ai, OpenAI, Anthropic, Gemini) —
+OpenRouter is not among them and there is no custom base-URL field. So the
+OpenRouter call must be made by the **AnalyzeIt backend / controlled tool
+layer**, which owns the key and the routing, not from inside the managed Hermes
+configuration. This is consistent with §7: the tool layer is already the
+authorization and evidence boundary, so it is the right place for provider
+choice to live.
+
+**Do not let model identity leak into the workflow.** No prompt, recipe step or
+categorisation rule may depend on a specific model's quirks. Swapping
+`MODEL_PRIMARY` must be a config change, never a code change — that property is
+what makes §12 cheap to act on later.
 
 ---
 
@@ -262,7 +300,7 @@ Pricing remains a hypothesis. Validate willingness to pay against hours saved, r
 
 | Months | Focus | Target |
 |---|---|---|
-| **0–2** | Hostinger Hermes deployment, Kimi integration, Supabase tool layer, messy workbook parser, recipe capture | First 5 paying accountants |
+| **0–2** | Hostinger Hermes deployment, OpenRouter/Gemini integration, Supabase tool layer, messy workbook parser, recipe capture | First 5 paying accountants |
 | **3–4** | Stabilize recurring workflows, provenance, invariant checks, audit trail, onboarding | 10–20 paying practices |
 | **5–6** | Case studies, UK outbound sales, seeded templates, workflow analytics | 20–35 practices |
 | **7–9** | Reliability, integrations, team workflows; build DeepSeek Harness evaluation benchmark (Hermes stays production-first) | — |
@@ -302,4 +340,4 @@ The real product is not the model, the swarm, or the dashboard. It is the **comp
 
 ---
 
-*Source baseline: AnalyzeIt repository and PRD v2, updated with the agreed Hermes-first Hostinger strategy, customer/admin dashboard separation, controlled Supabase tool layer, Kimi K3 reasoning path, and deferred DeepSeek Harness architecture.*
+*Source baseline: AnalyzeIt repository and PRD v2, updated with the agreed Hermes-first Hostinger strategy, customer/admin dashboard separation, controlled Supabase tool layer, OpenRouter reasoning path (Gemini 3.7 Flash primary, Kimi K3 secondary), and deferred DeepSeek Harness architecture.*
