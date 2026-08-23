@@ -1,9 +1,9 @@
 ---
 name: uk-ltd-transaction-categorisation
-description: "Use when processing bank or card statements (Excel/CSV/XLSX) for a UK limited company and assigning each transaction to a nominal category for statutory accounts and a CT600 corporation tax return. Triggers: bank statement, card statement, transaction categorisation, nominal coding, chart of accounts mapping, allowable vs disallowable expenditure, capital vs revenue, director's loan account, CT600, corporation tax computation, add-backs, capital allowances, bookkeeping clean-up for a UK Ltd. Also use when building or reviewing recipe steps, mapping tables or exception rules that perform this categorisation inside AnalyzeIt / Hermes."
+description: "Use when processing bank or card statements (Excel/CSV/XLSX) for a UK limited company and assigning each transaction to a nominal category for statutory accounts and a CT600 corporation tax return. Triggers: bank statement, card statement, transaction categorisation, nominal coding, chart of accounts mapping, allowable vs disallowable expenditure, capital vs revenue, director's loan account, CT600, corporation tax computation, add-backs, capital allowances, bookkeeping clean-up for a UK Ltd. Also use when building or reviewing recipe steps, mapping tables or exception rules that perform this categorisation inside AnalyzeIt, or in the controlled tool layer the Hermes agent calls."
 metadata:
   author: AnalyzeIt
-  version: "1.0.0"
+  version: "1.1.0"
   jurisdiction: "United Kingdom — private companies limited by shares (Ltd)"
   rates_verified_to: "2026-08"
 ---
@@ -31,7 +31,7 @@ be business or personal (Amazon, Apple, PayPal, Uber, Tesco, a hotel chain).
 totals, VAT splits, balance reconciliation, materiality — is executed
 deterministically in Polars/DuckDB and returned by a tool. The model proposes
 categories and explains them; the engine computes. This mirrors the platform
-rule in the PRD §8: *the LLM is never the source of a financial number.*
+rule in PRD v3 §6: *the LLM is never the source of a financial number.*
 
 **3. A bank statement is evidence of a payment, not evidence of its nature.**
 It shows that money moved, when, and to whom. It does not show what was bought,
@@ -66,7 +66,7 @@ changes the correct answer for many lines:
 ### 1.2 Parse the workbook defensively
 
 UK bank exports are messy in predictable ways. Handle all of these; each becomes
-a recipe step (PRD §6):
+a recipe step (PRD v3 §5):
 
 - **Header row is not row 1.** Bank name, account number, sort code, address
   block and statement period usually sit above the table. Capture the statement
@@ -300,7 +300,7 @@ on the **flat rate scheme**, do not attempt any input VAT treatment at all.
 
 ### 3.1 Reconcile, don't assert
 
-Run these deterministically. Any failure **blocks** the run (PRD §5.3) — a
+Run these deterministically. Any failure **blocks** the run (PRD v3 §10) — a
 categorisation set that does not reconcile is worse than no categorisation,
 because it looks finished.
 
@@ -360,7 +360,7 @@ evidence, the candidate treatments, and the exact question:
    Impact     : £4,250 to taxable profit; ~£1,062 tax at 25%
 ```
 
-Rank the queue by **GBP impact, not row count** (PRD §5.2). Group identical
+Rank the queue by **GBP impact, not row count** (PRD v3 §10). Group identical
 questions: *"38 payments to SumUp, £2,140 total — same question"* is one
 escalation, not thirty-eight.
 
@@ -455,16 +455,37 @@ remains the accountant's determination.*
 
 ## Part 5 — Running this inside AnalyzeIt / Hermes
 
-This skill executes as a recipe on the **Hermes agent running 24/7 on the
-Hostinger VPS** (`/var/www/hermes-agent`, FastAPI under PM2 — see
-`HERMES_HOSTINGER_DEPLOYMENT.md`). The dashboard notifies Hermes when a
-statement lands in Supabase Storage; Hermes does the work and streams
-exceptions back to Postgres.
+This skill executes as a recipe on the **managed Hermes Agent hosted on
+Hostinger**, the production agent runtime (PRD v3 §3). Hermes is reached only
+through a server-side authenticated bridge:
+
+```
+browser → AnalyzeIt server/API → authenticated Hermes API
+        → controlled tool layer → Supabase / DuckDB / Polars
+```
+
+Three boundaries follow from that, and none of them are optional:
+
+- **Hermes has no direct Supabase access** (PRD v3 §7). It calls the controlled
+  AnalyzeIt tool layer, which authorizes every operation against
+  organization → workspace → client *before* any data reaches the agent.
+- **Two dashboards, never mixed** (PRD v3 §4). The Hostinger Hermes dashboard
+  is the operator's infrastructure console — skills, agent config, logs. The
+  AnalyzeIt dashboard is the accountant's product. An accountant must never
+  receive Hermes admin credentials, model keys, system prompts or runtime
+  controls.
+- **Secrets stay server-side.** The Hermes secret and the reasoning-model API
+  key are never exposed to the browser, never returned in a tool result, and
+  never written into an exception note.
+
+Reasoning runs on **Kimi K3** behind the agent abstraction (PRD v3 §12). Write
+nothing in this workflow that depends on a specific model's behaviour — the
+runtime is meant to be replaceable without touching the categorisation logic.
 
 ### 5.1 Tool contract
 
-Use the platform tools (PRD §9) — do not reimplement them, and do not process
-rows in the model:
+Use the platform tools (PRD v3 §7) — do not reimplement them, do not reach past
+them to the database, and do not process rows in the model:
 
 ```
 parse_workbook(file_id)                        → structure + confidence
@@ -519,7 +540,7 @@ Add these to `invariants_json` on any statement recipe:
   sudden collapse in escalations usually means a rule became too greedy
 - Total spend per category within tolerance of the trailing average — **review**
 - Post-acceptance correction rate is rising — the recipe is degrading, and the
-  product should say so (PRD §5.4)
+  product should say so (PRD v3 §16)
 
 ---
 
