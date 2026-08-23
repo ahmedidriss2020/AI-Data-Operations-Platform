@@ -12,7 +12,8 @@
     "db:types": "supabase gen types typescript --local > apps/web/src/lib/database.types.ts",
     "test:isolation": "tsx scripts/rls-smoke.ts",
     "test:e2e": "tsx scripts/e2e-upload.ts",
-    "fixtures": "python scripts/make_messy_fixture.py"
+    "fixtures": "python scripts/make_messy_fixture.py",
+    "test:tool-layer": "tsx scripts/tool-layer-smoke.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.112.3",
