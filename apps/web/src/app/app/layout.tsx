@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireCurrentOrg } from '@/lib/authz';
+import { AgentStatus } from '@/components/agent-status';
 import { Logo, NavItem } from '@/components/ui';
 
 export default async function AppLayout({ children }: LayoutProps<'/app'>) {
@@ -70,6 +71,15 @@ export default async function AppLayout({ children }: LayoutProps<'/app'>) {
               }
             />
             <NavItem
+              href="/app/chat"
+              label="Hermes Copilot"
+              icon={
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              }
+            />
+            <NavItem
               href="/app/analytics"
               label="Data Analytics"
               icon={
@@ -119,14 +129,8 @@ export default async function AppLayout({ children }: LayoutProps<'/app'>) {
 
         {/* Footer Actions */}
         <div className="mt-8 space-y-4 border-t pt-4" style={{ borderColor: 'var(--az-border)' }}>
-          {/* 24/7 Agent Status Indicator */}
-          <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-400">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Hermes 24/7 VPS</span>
-            </div>
-            <span className="text-[10px] uppercase tracking-wider text-emerald-500">Active</span>
-          </div>
+          {/* Live agent status -- polls /api/hermes/health. */}
+          <AgentStatus />
 
           <form action="/auth/signout" method="post">
             <button

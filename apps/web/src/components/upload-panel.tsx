@@ -15,22 +15,30 @@ import { ErrorText, Field, ProgressBar, Spinner, buttonClass, buttonStyle, input
 
 type Dataset = { id: string; name: string };
 
-type Phase = 'idle' | 'hashing' | 'uploading' | 'executing_hermes' | 'finalising';
+type Phase = 'idle' | 'hashing' | 'uploading' | 'finalising';
 
+/**
+ * Labels describe what the app is actually doing at that moment.
+ *
+ * An earlier version showed a "Hermes Agent executing Python/DuckDB cleaning
+ * pipeline" step backed by nothing but a 1.2s timer. In a product whose entire
+ * claim is that every number is traceable, a progress bar that reports work
+ * which never happened is not a cosmetic bug -- it is the product lying about
+ * provenance. The parse/replay step returns here when the tool layer
+ * (PRD v3 section 7) can actually run it.
+ */
 const PHASE_LABEL: Record<Phase, string> = {
   idle: '',
   hashing: 'Fingerprinting file (SHA-256)…',
   uploading: 'Uploading to encrypted storage…',
-  executing_hermes: 'Hermes Agent executing Python/DuckDB cleaning pipeline on Hostinger VPS…',
-  finalising: 'Recording recipe version & audit entry…',
+  finalising: 'Recording dataset version & audit entry…',
 };
 
 const PHASE_PROGRESS: Record<Phase, number> = {
   idle: 0,
-  hashing: 20,
-  uploading: 50,
-  executing_hermes: 80,
-  finalising: 95,
+  hashing: 25,
+  uploading: 65,
+  finalising: 90,
 };
 
 export function UploadPanel({
@@ -111,15 +119,16 @@ export function UploadPanel({
 
       if (uploadError) throw new Error(uploadError.message);
 
-      // Trigger Hermes VPS Execution with User Prompt Instructions
-      setPhase('executing_hermes');
-      await new Promise(resolve => setTimeout(resolve, 1200));
-
       setPhase('finalising');
       const completeResponse = await fetch('/api/uploads/complete', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ uploadId: signed.uploadId, workspaceId, sha256 }),
+        body: JSON.stringify({
+          uploadId: signed.uploadId,
+          workspaceId,
+          sha256,
+          instructions: agentInstructions.trim() || null,
+        }),
       });
 
       const completed = await completeResponse.json();
@@ -178,8 +187,8 @@ export function UploadPanel({
 
       {/* Hermes Agent Prompt Instructions */}
       <Field
-        label="Hermes Agent Cleaning Instructions"
-        hint="Tell Hermes how to clean, structure, or normalize this workbook (e.g. remove subtotal rows, convert negative parentheses, match vendor codes)."
+        label="Cleaning instructions for Hermes"
+        hint="Recorded with the upload and used when this workbook is processed (e.g. remove subtotal rows, convert negative parentheses, match vendor codes)."
       >
         <textarea
           className={inputClass}
@@ -255,7 +264,7 @@ export function UploadPanel({
                 Click to select or drag and drop workbook
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--az-text-subtle)' }}>
-                Raw files are hashed, versioned, and processed by Hermes Agent
+                Raw files are hashed, versioned, and queued for Hermes
               </p>
             </div>
           )}
@@ -274,10 +283,10 @@ export function UploadPanel({
         {busy ? (
           <>
             <Spinner size={18} />
-            <span>Executing Hermes VPS Pipeline...</span>
+            <span>Uploading…</span>
           </>
         ) : (
-          'Upload & Execute Hermes Pipeline'
+          'Upload workbook'
         )}
       </button>
     </form>

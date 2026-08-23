@@ -26,6 +26,10 @@ const requestSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/, 'sha256 must be 64 lowercase hex characters')
     .nullish(),
+  // What the accountant told the agent to do with this file. Recorded on the
+  // audit row rather than a column: it is a human instruction attached to one
+  // upload, and the audit trail is where the reason for a change belongs.
+  instructions: z.string().trim().max(4000).nullish(),
 });
 
 export async function POST(request: Request) {
@@ -141,6 +145,7 @@ export async function POST(request: Request) {
         sha256: body.sha256 ?? null,
         dataset_id: upload.dataset_id,
         dataset_version_id: datasetVersionId,
+        cleaning_instructions: body.instructions || null,
       },
     });
 
