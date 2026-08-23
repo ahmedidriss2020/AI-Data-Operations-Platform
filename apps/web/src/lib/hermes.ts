@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { mintScopeToken } from '@/lib/tool-layer/scope-token';
+
 /**
  * The authenticated bridge to the Hermes agent (PRD v3 section 11).
  *
@@ -204,14 +206,28 @@ export async function hermesHealth(): Promise<HermesHealth> {
 export async function hermesChat(input: {
   workspaceId: string;
   orgId: string;
+  userId: string;
   message: string;
   history: HermesChatMessage[];
 }): Promise<HermesEnvelope<{ reply: string }>> {
+  // The scope token is the capability Hermes spends on its way back in. It is
+  // minted here, after the caller's access was proven, and it is what the tool
+  // layer trusts -- the workspace_id below is context for the agent's prompt,
+  // never the thing that authorizes a tool call.
+  const scopeToken = mintScopeToken({
+    orgId: input.orgId,
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+  });
+
   return call<HermesEnvelope<{ reply: string }>>('/api/v1/chat', {
     workspace_id: input.workspaceId,
     org_id: input.orgId,
     message: input.message,
     history: input.history,
+    // Hermes echoes this on every call it makes back to /api/tools/*.
+    scope_token: scopeToken,
+    tool_layer_url: process.env.TOOL_LAYER_PUBLIC_URL ?? null,
   });
 }
 

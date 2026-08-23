@@ -152,6 +152,243 @@ export type Database = {
           },
         ]
       }
+      analysis_runs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dataset_version_id: string | null
+          id: string
+          question: string | null
+          result_json: Json
+          source_row_ids: Json
+          sql_executed: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dataset_version_id?: string | null
+          id?: string
+          question?: string | null
+          result_json?: Json
+          source_row_ids?: Json
+          sql_executed?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dataset_version_id?: string | null
+          id?: string
+          question?: string | null
+          result_json?: Json
+          source_row_ids?: Json
+          sql_executed?: string | null
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      cleaning_recipes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dataset_id: string | null
+          id: string
+          name: string
+          source_signature: string | null
+          template_origin_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dataset_id?: string | null
+          id?: string
+          name: string
+          source_signature?: string | null
+          template_origin_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dataset_id?: string | null
+          id?: string
+          name?: string
+          source_signature?: string | null
+          template_origin_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      deviations: {
+        Row: {
+          affected_rows: number
+          created_at: string
+          evidence_json: Json
+          id: string
+          materiality_gbp: number
+          resolution: Database["public"]["Enums"]["deviation_resolution"]
+          resolved_at: string | null
+          resolved_by: string | null
+          run_id: string
+          severity: Database["public"]["Enums"]["confidence_tier"]
+          type: string
+        }
+        Insert: {
+          affected_rows?: number
+          created_at?: string
+          evidence_json?: Json
+          id?: string
+          materiality_gbp?: number
+          resolution?: Database["public"]["Enums"]["deviation_resolution"]
+          resolved_at?: string | null
+          resolved_by?: string | null
+          run_id: string
+          severity?: Database["public"]["Enums"]["confidence_tier"]
+          type: string
+        }
+        Update: {
+          affected_rows?: number
+          created_at?: string
+          evidence_json?: Json
+          id?: string
+          materiality_gbp?: number
+          resolution?: Database["public"]["Enums"]["deviation_resolution"]
+          resolved_at?: string | null
+          resolved_by?: string | null
+          run_id?: string
+          severity?: Database["public"]["Enums"]["confidence_tier"]
+          type?: string
+        }
+        Relationships: []
+      }
+      mapping_entries: {
+        Row: {
+          confirmed_by: string | null
+          created_at: string
+          hit_count: number
+          id: string
+          kind: string
+          learned_from_run_id: string | null
+          lookup_key: string
+          mapped_value: string
+          metadata: Json
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          confirmed_by?: string | null
+          created_at?: string
+          hit_count?: number
+          id?: string
+          kind: string
+          learned_from_run_id?: string | null
+          lookup_key: string
+          mapped_value: string
+          metadata?: Json
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          confirmed_by?: string | null
+          created_at?: string
+          hit_count?: number
+          id?: string
+          kind?: string
+          learned_from_run_id?: string | null
+          lookup_key?: string
+          mapped_value?: string
+          metadata?: Json
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      recipe_runs: {
+        Row: {
+          auto_corrections: number
+          automation_rate: number | null
+          dataset_version_in: string
+          dataset_version_out: string | null
+          deviations_count: number
+          finished_at: string | null
+          id: string
+          invariant_status: Database["public"]["Enums"]["invariant_status"]
+          recipe_version_id: string
+          rows_matched: number | null
+          rows_processed: number | null
+          started_at: string
+          started_by: string | null
+          status: Database["public"]["Enums"]["recipe_run_status"]
+        }
+        Insert: {
+          auto_corrections?: number
+          automation_rate?: number | null
+          dataset_version_in: string
+          dataset_version_out?: string | null
+          deviations_count?: number
+          finished_at?: string | null
+          id?: string
+          invariant_status?: Database["public"]["Enums"]["invariant_status"]
+          recipe_version_id: string
+          rows_matched?: number | null
+          rows_processed?: number | null
+          started_at?: string
+          started_by?: string | null
+          status?: Database["public"]["Enums"]["recipe_run_status"]
+        }
+        Update: {
+          auto_corrections?: number
+          automation_rate?: number | null
+          dataset_version_in?: string
+          dataset_version_out?: string | null
+          deviations_count?: number
+          finished_at?: string | null
+          id?: string
+          invariant_status?: Database["public"]["Enums"]["invariant_status"]
+          recipe_version_id?: string
+          rows_matched?: number | null
+          rows_processed?: number | null
+          started_at?: string
+          started_by?: string | null
+          status?: Database["public"]["Enums"]["recipe_run_status"]
+        }
+        Relationships: []
+      }
+      recipe_versions: {
+        Row: {
+          change_note: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          invariants_json: Json
+          recipe_id: string
+          steps_json: Json
+          version_no: number
+        }
+        Insert: {
+          change_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invariants_json?: Json
+          recipe_id: string
+          steps_json?: Json
+          version_no: number
+        }
+        Update: {
+          change_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invariants_json?: Json
+          recipe_id?: string
+          steps_json?: Json
+          version_no?: number
+        }
+        Relationships: []
+      }
       datasets: {
         Row: {
           created_at: string
@@ -389,6 +626,12 @@ export type Database = {
       }
       try_uuid: { Args: { p_text: string }; Returns: string }
       workspace_of_dataset: { Args: { p_dataset_id: string }; Returns: string }
+      workspace_of_recipe: { Args: { p_recipe_id: string }; Returns: string }
+      workspace_of_recipe_version: {
+        Args: { p_version_id: string }
+        Returns: string
+      }
+      workspace_of_run: { Args: { p_run_id: string }; Returns: string }
       write_audit: {
         Args: {
           p_action: string
@@ -402,8 +645,12 @@ export type Database = {
       }
     }
     Enums: {
+      confidence_tier: "auto" | "review" | "block"
       dataset_version_kind: "raw" | "cleaned"
+      deviation_resolution: "unresolved" | "accepted" | "rejected" | "corrected"
+      invariant_status: "pending" | "passed" | "failed"
       org_role: "owner" | "admin" | "member"
+      recipe_run_status: "running" | "succeeded" | "blocked" | "failed"
       upload_status: "pending" | "stored" | "failed"
       workspace_status: "active" | "archived"
     }

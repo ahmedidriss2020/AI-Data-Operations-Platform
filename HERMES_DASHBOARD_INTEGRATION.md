@@ -123,12 +123,50 @@ admin credentials or infrastructure controls.
 - `POST /api/hermes/chat` — workspace-scoped chat turn, audited via `write_audit`
 - `/app/chat` — the accountant-facing chat page
 
-**Not yet wired** — these need the agent side to exist before the dashboard can
-call them:
+- The controlled tool layer (§7) at `POST /api/tools/{tool}`, with scoped
+  delegation tokens, `dry_run` defaulting to true, evidence, and an audit row
+  per call. `GET /api/tools/{anything}` lists the registered tools.
 
-- The controlled tool layer itself (§7): the 17 tools, each with `dry_run`,
-  evidence and the tenant re-authorization gate
+**Not yet wired** — these need the compute layer to exist:
+
+- Twelve of the tools return an explicit `not_implemented` status naming what
+  they need (the Python parser, or DuckDB/Polars). They are registered with
+  their real signatures so the agent discovers the true contract and is told
+  honestly that the answer is unavailable — rather than receiving a 404 that
+  reads like a bug, or invented numbers, which in this product is the worst
+  failure mode there is.
 - Parse-on-upload. The upload path records the file, its fingerprint, its
   dataset version and the accountant's cleaning instructions; it does not yet
-  invoke `parse_workbook`. `hermesTool('parse_workbook', …)` is the call site
-  when the agent can serve it.
+  invoke `parse_workbook`.
+
+---
+
+## 7. How a tool call is authorized
+
+Two credentials, proving two different things:
+
+```
+Authorization: Bearer <TOOL_LAYER_SECRET>   the caller is our agent
+X-AnalyzeIt-Scope: <scope token>            on whose behalf, for which workspace
+```
+
+The second is the one that carries the tenant boundary. The bearer secret alone
+would let anything holding it name any workspace in the request body and read
+it — so **the workspace is never read from the body.** It is derived from the
+signed scope token, which the chat route mints only after
+`requireWorkspaceAccess` has proven that specific human may reach that specific
+workspace.
+
+The consequence worth stating plainly: an agent that has been prompt-injected
+into asking for another firm's data gets its own scope back, not the one it
+asked for. It cannot widen its reach, because its reach is not something it
+sends. Tokens expire in 15 minutes, since they travel through a runtime we do
+not control.
+
+`npm run test:tool-layer` exercises this boundary — forged signatures, tampered
+workspace claims, expiry, and tokens from another deployment.
+
+**`dry_run` defaults to `true`.** A caller that forgets the flag gets a preview,
+not an unreviewed change to a client's financial data. Read-only tools report
+`dry_run: false`, because calling a read "dry" would imply a withheld side
+effect that does not exist.

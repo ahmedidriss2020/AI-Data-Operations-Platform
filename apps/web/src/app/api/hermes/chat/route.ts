@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     const envelope = await hermesChat({
       workspaceId: context.workspaceId,
       orgId: context.orgId,
+      userId: context.user.id,
       message: body.message,
       history: body.history,
     });
