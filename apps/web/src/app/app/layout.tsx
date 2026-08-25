@@ -3,7 +3,7 @@ import { requireCurrentOrg } from '@/lib/authz';
 import { AgentStatus } from '@/components/agent-status';
 import { Logo, NavItem } from '@/components/ui';
 
-export default async function AppLayout({ children }: LayoutProps<'/app'>) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { org, role } = await requireCurrentOrg();
 
   return (

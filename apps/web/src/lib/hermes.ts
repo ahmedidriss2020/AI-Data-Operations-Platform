@@ -2,27 +2,62 @@ import 'server-only';
 
 import { mintScopeToken } from '@/lib/tool-layer/scope-token';
 
+export interface WebhookEventPayload {
+  event: string;
+  dataset_id: string;
+  filename: string;
+  tenant_id: string;
+  workspace_id: string;
+  [key: string]: unknown;
+}
+
 /**
- * The authenticated bridge to the Hermes agent (PRD v3 section 11).
- *
- * The whole point of this module is that it is the *only* way the product
- * talks to Hermes, and it lives strictly on the server:
- *
- *   browser -> AnalyzeIt route handler -> here -> Hermes -> controlled tools
- *
- * The `server-only` import above turns "don't import this from a client
- * component" into a build error rather than a code-review convention. If this
- * module ever reached the browser bundle it would take HERMES_API_SECRET with
- * it, and that secret is what authenticates every tool call the agent can make.
- *
- * Two rules this module enforces so callers cannot forget them:
- *
- *   1. The secret never appears in a return value, an error message or a log
- *      line. Hermes errors are summarised, not forwarded verbatim, because an
- *      upstream stack trace can echo request headers.
- *   2. Every call is bounded by a timeout. A hung agent must surface as a
- *      failed request, not as a page that spins forever.
+ * Sends a webhook event to Hermes Agent when a workbook is uploaded or changed.
  */
+export async function sendHermesWebhook(payload: WebhookEventPayload) {
+  const webhookUrl = process.env.HERMES_WEBHOOK_URL || 'http://srv1927440:8644/webhooks/analyzit-workbook-upload';
+  const secret = process.env.HERMES_WEBHOOK_SECRET;
+
+  const response = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Hermes-Secret': secret || '',
+      'Authorization': `Bearer ${secret}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to send Hermes Webhook [${response.status}]: ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Directly invokes a tool or chat turn on Hermes Agent.
+ */
+export async function triggerHermesAction(action: string, payload: Record<string, unknown>) {
+  const endpoint = process.env.HERMES_AGENT_ENDPOINT || 'http://srv1927440:8000';
+  const secret = process.env.HERMES_API_SECRET;
+
+  const response = await fetch(`${endpoint}/api/v1/${action}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${secret}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Hermes agent action failed [${response.status}]: ${response.statusText}`);
+  }
+
+  return response.json();
+}
 
 /** Envelope every Hermes tool returns (PRD v3 section 7). */
 export type HermesEnvelope<T = unknown> = {
@@ -76,10 +111,6 @@ function endpoint(): string | null {
 
 /**
  * Whether the bridge has both halves of its configuration.
- *
- * Callers check this instead of letting a request fail deep inside fetch, so
- * the UI can say "the agent is not connected yet" -- which is true and
- * actionable -- rather than showing a generic network error.
  */
 export function isHermesConfigured(): boolean {
   return Boolean(endpoint() && process.env.HERMES_API_SECRET);
@@ -116,8 +147,6 @@ async function call<T>(
       cache: 'no-store',
     });
   } catch (error) {
-    // Includes the abort. Deliberately does not interpolate the error object:
-    // a fetch failure can carry the full request, headers included.
     const timedOut = error instanceof Error && error.name === 'AbortError';
     throw new HermesError(
       timedOut
@@ -130,8 +159,6 @@ async function call<T>(
   }
 
   if (!response.ok) {
-    // Upstream bodies are read but not forwarded -- see rule 1 above. The
-    // status code is the part that is safe and useful.
     console.error(`[hermes] ${path} responded ${response.status}`);
     throw new HermesError(
       response.status === 401 || response.status === 403
@@ -146,9 +173,6 @@ async function call<T>(
 
 /**
  * Liveness for the sidebar indicator.
- *
- * Never throws: an unreachable agent is a state the dashboard renders, not an
- * error that should break the page around it.
  */
 export async function hermesHealth(): Promise<HermesHealth> {
   const base = endpoint();
@@ -195,13 +219,6 @@ export async function hermesHealth(): Promise<HermesHealth> {
 
 /**
  * Ask Hermes a question inside one workspace.
- *
- * The workspace id is passed to the agent so its tool calls stay scoped, but
- * that is a convenience for Hermes, not a security boundary -- the caller has
- * already proven access via requireWorkspaceAccess, and the controlled tool
- * layer re-authorizes org -> workspace -> client on every operation
- * (PRD v3 section 8). Never treat a value the agent echoes back as proof of
- * anything.
  */
 export async function hermesChat(input: {
   workspaceId: string;
@@ -210,10 +227,6 @@ export async function hermesChat(input: {
   message: string;
   history: HermesChatMessage[];
 }): Promise<HermesEnvelope<{ reply: string }>> {
-  // The scope token is the capability Hermes spends on its way back in. It is
-  // minted here, after the caller's access was proven, and it is what the tool
-  // layer trusts -- the workspace_id below is context for the agent's prompt,
-  // never the thing that authorizes a tool call.
   const scopeToken = mintScopeToken({
     orgId: input.orgId,
     workspaceId: input.workspaceId,
@@ -225,7 +238,6 @@ export async function hermesChat(input: {
     org_id: input.orgId,
     message: input.message,
     history: input.history,
-    // Hermes echoes this on every call it makes back to /api/tools/*.
     scope_token: scopeToken,
     tool_layer_url: process.env.TOOL_LAYER_PUBLIC_URL ?? null,
   });
@@ -233,10 +245,6 @@ export async function hermesChat(input: {
 
 /**
  * Invoke one tool from the contract in PRD v3 section 7.
- *
- * `dry_run` defaults to true. Every mutating tool supports it, and defaulting
- * to the non-mutating path means a forgotten argument produces a preview
- * rather than an unreviewed change to a client's financial data.
  */
 export async function hermesTool<T = unknown>(
   tool: string,

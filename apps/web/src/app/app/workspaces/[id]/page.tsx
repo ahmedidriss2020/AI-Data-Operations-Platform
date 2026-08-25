@@ -6,7 +6,7 @@ import { requireCurrentOrg } from '@/lib/authz';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { formatBytes } from '@/lib/storage';
 
-export default async function WorkspacePage({ params }: PageProps<'/app/workspaces/[id]'>) {
+export default async function WorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { org } = await requireCurrentOrg();
   const supabase = await createServerSupabase();

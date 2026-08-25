@@ -16,7 +16,9 @@ export const metadata = { title: 'Hermes Copilot · AnalyzeIt' };
  */
 export default async function ChatPage({
   searchParams,
-}: PageProps<'/app/chat'>) {
+}: {
+  searchParams: Promise<{ workspace?: string }>;
+}) {
   const { org } = await requireCurrentOrg();
   const params = await searchParams;
   const supabase = await createServerSupabase();

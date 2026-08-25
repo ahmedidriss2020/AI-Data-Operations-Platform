@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { handleRouteError } from '@/lib/api';
 import { adminFor, requireWorkspaceAccess } from '@/lib/authz';
 import { RAW_BUCKET } from '@/lib/storage';
+import { sendHermesWebhook } from '@/lib/hermes';
 
 /**
  * Step 2 of the upload: confirm the object actually landed, then promote the
@@ -148,6 +149,23 @@ export async function POST(request: Request) {
         cleaning_instructions: body.instructions || null,
       },
     });
+
+    // Dispatch webhook to Hermes Agent on Hostinger VPS
+    try {
+      await sendHermesWebhook({
+        event: 'workbook.uploaded',
+        dataset_id: upload.dataset_id ?? upload.id,
+        filename: upload.original_filename,
+        tenant_id: context.orgId,
+        workspace_id: context.workspaceId,
+        upload_id: upload.id,
+        storage_path: upload.storage_path,
+        sha256: body.sha256 ?? null,
+        instructions: body.instructions || null,
+      });
+    } catch (webhookError) {
+      console.warn('Hermes Webhook dispatch warning:', webhookError);
+    }
 
     return NextResponse.json({
       uploadId: upload.id,

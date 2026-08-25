@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     "Learn a client's recurring data workflow once, then execute it every month with only exceptions surfaced.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"

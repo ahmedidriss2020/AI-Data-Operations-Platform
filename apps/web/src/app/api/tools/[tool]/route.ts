@@ -46,7 +46,7 @@ function bearerMatches(header: string | null): boolean {
   return provided.length === wanted.length && timingSafeEqual(provided, wanted);
 }
 
-export async function POST(request: Request, { params }: RouteContext<'/api/tools/[tool]'>) {
+export async function POST(request: Request, { params }: { params: Promise<{ tool: string }> }) {
   const { tool: toolName } = await params;
   const startedAt = Date.now();
 
