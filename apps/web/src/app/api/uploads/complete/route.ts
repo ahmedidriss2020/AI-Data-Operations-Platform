@@ -5,6 +5,7 @@ import { handleRouteError } from '@/lib/api';
 import { adminFor, requireWorkspaceAccess } from '@/lib/authz';
 import { RAW_BUCKET } from '@/lib/storage';
 import { sendHermesWebhook } from '@/lib/hermes';
+import { isParserConfigured, notifyParserUpload, pushWorkbook } from '@/lib/parser-client';
 
 /**
  * Step 2 of the upload: confirm the object actually landed, then promote the
@@ -150,7 +151,36 @@ export async function POST(request: Request) {
       },
     });
 
-    // Dispatch webhook to Hermes Agent on Hostinger VPS
+    // Dispatch to the parser service (primary) and the Hermes agent webhook
+    // (secondary, for agent-side awareness). Parse failures must not fail the
+    // upload itself: the file is safely stored and audited either way.
+    const parserNotes: Record<string, unknown> = { parserConfigured: isParserConfigured() };
+
+    if (isParserConfigured() && upload.storage_path) {
+      try {
+        const datasetKey = upload.dataset_id ?? upload.id;
+        // Download from our own storage and push bytes so the parser does not
+        // need Supabase credentials of its own.
+        const { data: obj } = await admin.storage.from(RAW_BUCKET).download(upload.storage_path);
+        if (obj) {
+          await pushWorkbook(datasetKey, await obj.arrayBuffer());
+        }
+        const parseResult = (await notifyParserUpload({
+          dataset_id: datasetKey,
+          filename: upload.original_filename,
+          tenant_id: context.orgId,
+          workspace_id: context.workspaceId,
+          storage_path: upload.storage_path,
+          sha256: body.sha256 ?? null,
+        })) as { parse?: Record<string, unknown>; warning?: string };
+        parserNotes.parse = parseResult.parse ?? null;
+        parserNotes.warning = parseResult.warning ?? null;
+      } catch (parserError) {
+        console.warn('[uploads/complete] parser dispatch warning:', parserError);
+        parserNotes.error = parserError instanceof Error ? parserError.message : 'parse dispatch failed';
+      }
+    }
+
     try {
       await sendHermesWebhook({
         event: 'workbook.uploaded',
@@ -172,6 +202,7 @@ export async function POST(request: Request) {
       status: 'stored',
       byteSize: actualSize,
       datasetVersionId,
+      parser: parserNotes,
     });
   } catch (error) {
     return handleRouteError(error);

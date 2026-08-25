@@ -1,0 +1,9 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34
+polars>=1.31
+duckdb>=1.3
+openpyxl>=3.1.5
+python-multipart>=0.0.20
+httpx>=0.28
+pyarrow>=25
+pandas>=2.2

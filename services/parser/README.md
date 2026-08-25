@@ -1,15 +1,32 @@
-# Workbook parser (Week 2)
+# Workbook parser service (Week 2)
 
-Placeholder. PRD section 6 makes messy workbook parsing a P0 deliverable rather than an
-assumption — "this is where pilots die" — so it gets its own service rather than living inside
-the web app.
+Python/FastAPI compute layer for AnalyzeIt. Parses messy workbooks into
+structured datasets and serves the tool contract (PRD v3 §7).
 
-Planned: Python / FastAPI, with Polars and DuckDB doing the arithmetic. It reads a raw upload from
-the `raw` bucket, produces a structured *interpretation* (table boundaries, header location, type
-inference) with a confidence score, writes Parquet to the `parquet` bucket, and records a new
-`dataset_versions` row whose parent is the v0 the upload path already created.
+## Run
 
-Build against `fixtures/messy/acme-sales-2026-08.xlsx`, which carries the section 6 pathologies
-deliberately. The eval harness (section 8) belongs here too, and the PRD is explicit that it is
-built in week 2 rather than week 8 — without it, "interchangeable OpenAI/Kimi" is a claim that
-cannot safely be acted on.
+```bash
+cd services/parser
+uv venv venv
+uv pip install --python venv/bin/python -r requirements.txt
+HERMES_WEBHOOK_SECRET=<secret> TOOL_LAYER_SECRET=<secret> \
+  venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8100
+```
+
+## Endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET  | /health | none | liveness |
+| POST | /datasets/{id} | X-Hermes-Secret | push raw workbook bytes |
+| POST | /webhooks/{name} | X-Hermes-Secret | workbook.uploaded events |
+| POST | /api/v1/tools/{tool} | Bearer TOOL_LAYER_SECRET | parse_workbook, profile_dataset, query_dataset, apply_recipe |
+
+## Production notes
+
+- Set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` to let the webhook fetch
+  uploads directly from the `raw` bucket (then pushWorkbook is unnecessary).
+- The in-memory DATASETS store is per-process; for multi-worker deployments,
+  persist parsed Parquet to object storage keyed by dataset_id.
+- Dashboard wiring: `apps/web/src/lib/parser-client.ts`, configured via
+  `PARSER_SERVICE_URL` + `PARSER_SERVICE_SECRET`.

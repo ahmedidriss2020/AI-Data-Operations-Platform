@@ -26,6 +26,12 @@ from pydantic import BaseModel
 APP_SECRET = os.environ.get("HERMES_WEBHOOK_SECRET", "")
 TOOL_SECRET = os.environ.get("TOOL_LAYER_SECRET", "")
 
+# Supabase Storage (production): the webhook carries storage_path and the
+# service downloads the raw workbook itself.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+RAW_BUCKET = os.environ.get("RAW_BUCKET", "raw")
+
 app = FastAPI(title="AnalyzeIt Parser Agent", version="0.1.0")
 
 # In-memory dataset store (dataset_id -> parquet bytes + metadata).
@@ -180,6 +186,47 @@ def fingerprint(df: pl.DataFrame) -> str:
     return h.hexdigest()
 
 
+def fetch_from_supabase(storage_path: str) -> bytes | None:
+    """Download a raw upload from Supabase Storage. Returns None when the
+    service is not configured for Supabase (local/dev mode)."""
+    if not (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY):
+        return None
+    import httpx
+    url = f"{SUPABASE_URL}/storage/v1/object/{RAW_BUCKET}/{storage_path.lstrip('/')}"
+    resp = httpx.get(
+        url,
+        headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        raise HTTPException(502, f"Supabase Storage fetch failed [{resp.status_code}] for {storage_path}")
+    return resp.content
+
+
+def ensure_parsed(dataset_id: str) -> dict[str, Any]:
+    """Parse + cache a dataset on first touch (webhook or tool call)."""
+    ds = DATASETS.get(dataset_id)
+    if not ds:
+        raise HTTPException(404, f"unknown dataset_id {dataset_id}")
+    if "df" in ds:
+        return ds
+    raw = fetch_from_supabase(ds["storage_path"]) if ds.get("storage_path") else None
+    if raw is None:
+        raw = ds.get("bytes")
+    if not raw:
+        raise HTTPException(
+            409,
+            f"no bytes available for {dataset_id}; Supabase Storage is not configured "
+            "(set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) or push via POST /datasets",
+        )
+    parsed = parse_sheet(raw)
+    df = parsed["dataframe"]
+    ds["df"] = df
+    ds["source_signature"] = fingerprint(df)
+    ds["parsed"] = {k: v for k, v in parsed.items() if k != "dataframe"}
+    return ds
+
+
 # --------------------------------------------------------------------------
 # endpoints
 # --------------------------------------------------------------------------
@@ -211,25 +258,31 @@ async def webhook(name: str, payload: WebhookPayload,
     check_secret(x_hermes_secret, APP_SECRET, "HERMES_WEBHOOK_SECRET")
 
     result: dict[str, Any] = {"received": payload.event}
-    if payload.event == "workbook.uploaded" and payload.storage_path:
-        # In production: download from Supabase Storage using storage_path.
-        # Locally: the file must be pushed via POST /datasets first.
-        ds = DATASETS.get(payload.dataset_id or payload.storage_path)
-        if ds:
-            parsed = parse_sheet(ds["bytes"])
-            df = parsed["dataframe"]
-            sig = fingerprint(df)
-            DATASETS[payload.dataset_id or payload.storage_path].update({
-                "df": df, "source_signature": sig,
-                "parsed": {k: v for k, v in parsed.items() if k != "dataframe"},
-            })
-            result["parse"] = {
-                "rows": df.height, "columns": df.columns,
-                "header_row": parsed["header_row"],
-                "dropped_junk_rows": parsed["dropped_rows"],
-                "mappings_found": parsed["notes"],
-                "source_signature": sig,
+    if payload.event == "workbook.uploaded":
+        ds_id = payload.dataset_id or payload.storage_path or ""
+        # Register the dataset from the webhook metadata; bytes come either
+        # from Supabase Storage (production) or a prior POST /datasets push.
+        if ds_id and ds_id not in DATASETS:
+            DATASETS[ds_id] = {
+                "bytes": None, "filename": payload.filename,
+                "storage_path": payload.storage_path,
             }
+        try:
+            ds = ensure_parsed(ds_id) if ds_id else None
+        except HTTPException as exc:
+            if "unknown" in str(exc.detail):
+                result["warning"] = f"Bytes unavailable yet for {ds_id}; parser will fetch on first tool call"
+                return result
+            raise
+        p = ds["parsed"]
+        df = ds["df"]
+        result["parse"] = {
+            "rows": df.height, "columns": df.columns,
+            "header_row": p["header_row"],
+            "dropped_junk_rows": p["dropped_rows"],
+            "mappings_found": p["notes"],
+            "source_signature": ds["source_signature"],
+        }
     return result
 
 
@@ -261,15 +314,7 @@ async def run_tool(tool: str, request: Request,
 
     if tool == "parse_workbook":
         ds_id = params.get("dataset_id")
-        ds = DATASETS.get(ds_id)
-        if not ds:
-            raise HTTPException(404, f"unknown dataset_id {ds_id}")
-        if "df" not in ds:
-            parsed = parse_sheet(ds["bytes"])
-            df = parsed["dataframe"]
-            ds["df"] = df
-            ds["source_signature"] = fingerprint(df)
-            ds["parsed"] = {k: v for k, v in parsed.items() if k != "dataframe"}
+        ds = ensure_parsed(ds_id)
         p = ds["parsed"]
         return {"status": "result", "result": {
             "rows": ds["df"].height, "columns": p["columns"],
@@ -280,9 +325,7 @@ async def run_tool(tool: str, request: Request,
         }, "evidence": {"tool": tool, "dataset_id": ds_id}}
 
     if tool == "profile_dataset":
-        ds = DATASETS.get(params.get("dataset_id"))
-        if not ds or "df" not in ds:
-            raise HTTPException(404, "dataset not parsed yet; call parse_workbook first")
+        ds = ensure_parsed(params.get("dataset_id"))
         df = ds["df"]
         profile = {}
         for col in df.columns:
@@ -302,9 +345,7 @@ async def run_tool(tool: str, request: Request,
             "evidence": {"tool": tool}}
 
     if tool == "query_dataset":
-        ds = DATASETS.get(params.get("dataset_id"))
-        if not ds or "df" not in ds:
-            raise HTTPException(404, "dataset not parsed yet; call parse_workbook first")
+        ds = ensure_parsed(params.get("dataset_id"))
         sql = params.get("sql") or ""
         con = duckdb.connect()
         con.register("ds", ds["df"].to_pandas())
@@ -315,9 +356,7 @@ async def run_tool(tool: str, request: Request,
                 "evidence": {"tool": tool, "sql": sql}}
 
     if tool == "apply_recipe":
-        ds = DATASETS.get(params.get("dataset_id"))
-        if not ds or "df" not in ds:
-            raise HTTPException(404, "dataset not parsed yet; call parse_workbook first")
+        ds = ensure_parsed(params.get("dataset_id"))
         steps = params.get("steps") or []
         preview_steps = [{"step": s.get("type"), "dry_run": dry_run} for s in steps]
         if not dry_run:
