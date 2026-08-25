@@ -23,8 +23,20 @@ import polars as pl
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
 
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load apps/web/.env.local if available
+web_env = Path(__file__).resolve().parents[3] / "apps" / "web" / ".env.local"
+if web_env.exists():
+    load_dotenv(web_env)
+else:
+    load_dotenv()
+
 APP_SECRET = os.environ.get("HERMES_WEBHOOK_SECRET", "")
 TOOL_SECRET = os.environ.get("TOOL_LAYER_SECRET", "")
+HERMES_API_SECRET = os.environ.get("HERMES_API_SECRET", "")
+
 
 # Importing chat registers the /api/v1/chat route on this app.
 # (Placed after app creation below; see bottom of module.)
@@ -381,11 +393,15 @@ async def run_tool(tool: str, request: Request,
     raise HTTPException(404, f"unknown tool '{tool}'")
 
 
+# Import chat so its decorators register /api/v1/chat and extended /health on this app instance
+try:
+    from . import chat  # noqa: E402,F401
+except ImportError:
+    import chat  # noqa: E402,F401
+
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8100)
 
-
-# Import chat at the very end so its decorators register /api/v1/chat and the
-# extended /health on this app instance — regardless of how the app is served.
-from . import chat  # noqa: E402,F401

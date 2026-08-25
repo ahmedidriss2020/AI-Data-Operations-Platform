@@ -21,7 +21,11 @@ from typing import Any
 import httpx
 from fastapi import Header, HTTPException
 
-from .main import APP_SECRET, TOOL_SECRET, app, DATASETS, ensure_parsed
+try:
+    from .main import APP_SECRET, TOOL_SECRET, app, DATASETS, ensure_parsed
+except ImportError:
+    from main import APP_SECRET, TOOL_SECRET, app, DATASETS, ensure_parsed
+
 from fastapi import Request as FastAPIRequest
 
 # Importing chat registers its routes on the shared FastAPI app.
@@ -147,10 +151,13 @@ def _execute_tool(name: str, args: dict[str, Any], scope_workspace_id: str | Non
 @app.post("/api/v1/chat")
 async def chat(request: FastAPIRequest,
                authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    # Same bearer contract as the tool layer: proves the caller is our backend.
-    expected = f"Bearer {TOOL_SECRET}" if TOOL_SECRET else ""
-    if authorization != expected:
-        raise HTTPException(401, "Unauthorized")
+    # Prove the caller is our Next.js dashboard backend
+    valid_secrets = {s for s in (TOOL_SECRET, os.environ.get("HERMES_API_SECRET", "")) if s}
+    if valid_secrets:
+        allowed_headers = {f"Bearer {s}" for s in valid_secrets}
+        if authorization not in allowed_headers:
+            raise HTTPException(401, "Unauthorized")
+
 
     body = await request.json()
     message: str = (body.get("message") or "").strip()
