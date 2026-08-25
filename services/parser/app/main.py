@@ -26,6 +26,9 @@ from pydantic import BaseModel
 APP_SECRET = os.environ.get("HERMES_WEBHOOK_SECRET", "")
 TOOL_SECRET = os.environ.get("TOOL_LAYER_SECRET", "")
 
+# Importing chat registers the /api/v1/chat route on this app.
+# (Placed after app creation below; see bottom of module.)
+
 # Supabase Storage (production): the webhook carries storage_path and the
 # service downloads the raw workbook itself.
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
@@ -380,4 +383,9 @@ async def run_tool(tool: str, request: Request,
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8644)
+    uvicorn.run(app, host="0.0.0.0", port=8100)
+
+
+# Import chat at the very end so its decorators register /api/v1/chat and the
+# extended /health on this app instance — regardless of how the app is served.
+from . import chat  # noqa: E402,F401
