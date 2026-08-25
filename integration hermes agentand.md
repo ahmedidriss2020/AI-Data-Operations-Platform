@@ -17,11 +17,11 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_JY2wD5RWkxDH2TCjvhOlVw_ybsoG
 
 # Hermes Hostinger VPS Integration (srv1927440)
 HERMES_AGENT_ENDPOINT=http://srv1927440:8000
-HERMES_API_SECRET=hermes_sec_key_prod_987654321
+HERMES_API_SECRET=<set-in-.env.local-only>
 
 # Hermes Webhook Trigger
 HERMES_WEBHOOK_URL=http://srv1927440:8644/webhooks/analyzit-workbook-upload
-HERMES_WEBHOOK_SECRET=VCNNLWqvqNZRkhcZnBkKGsqCW1jv0L9x5fzI35qlGMI
+HERMES_WEBHOOK_SECRET=<set-in-.env.local-only>
 
 # OpenRouter Reasoning Provider
 OPENROUTER_API_KEY=your_openrouter_api_key_here

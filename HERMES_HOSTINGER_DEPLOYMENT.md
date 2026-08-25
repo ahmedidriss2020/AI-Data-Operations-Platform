@@ -51,7 +51,7 @@ pip install fastapi uvicorn supabase polars duckdb pydantic python-dotenv
 Create `/var/www/hermes-agent/.env`:
 ```env
 PORT=8000
-HERMES_API_SECRET=hermes_sec_key_prod_987654321
+HERMES_API_SECRET=<set-in-.env.local-only>
 SUPABASE_URL=https://jweclsvkndyvltchnbcl.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 OPENAI_API_KEY=your_openai_api_key
@@ -85,7 +85,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_JY2wD5RWkxDH2TCjvhOlVw_ybsoG
 
 # Hermes Hostinger Integration
 HERMES_AGENT_ENDPOINT=http://YOUR_HOSTINGER_VPS_IP:8000
-HERMES_API_SECRET=hermes_sec_key_prod_987654321
+HERMES_API_SECRET=<set-in-.env.local-only>
 ```
 
 ### Step 3.2: API Integration Bridge (`apps/web/src/lib/hermes.ts`)

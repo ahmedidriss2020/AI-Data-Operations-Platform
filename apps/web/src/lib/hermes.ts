@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHmac } from 'node:crypto';
+
 import { mintScopeToken } from '@/lib/tool-layer/scope-token';
 
 export interface WebhookEventPayload {
@@ -13,19 +15,30 @@ export interface WebhookEventPayload {
 
 /**
  * Sends a webhook event to Hermes Agent when a workbook is uploaded or changed.
+ *
+ * Auth is HMAC-SHA256 over the exact request body, sent as
+ * `X-Hub-Signature-256` -- the scheme the gateway's webhook adapter
+ * validates. The raw secret never travels on the wire.
  */
 export async function sendHermesWebhook(payload: WebhookEventPayload) {
   const webhookUrl = process.env.HERMES_WEBHOOK_URL || 'http://srv1927440:8644/webhooks/analyzit-workbook-upload';
   const secret = process.env.HERMES_WEBHOOK_SECRET;
 
+  if (!secret) {
+    throw new Error('HERMES_WEBHOOK_SECRET is not set; refusing to send an unsigned webhook');
+  }
+
+  const body = JSON.stringify(payload);
+  const signature = 'sha256=' + createHmac('sha256', secret).update(body, 'utf8').digest('hex');
+
   const response = await fetch(webhookUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Hermes-Secret': secret || '',
-      'Authorization': `Bearer ${secret}`,
+      'X-Hub-Signature-256': signature,
+      'X-GitHub-Event': payload.event,
     },
-    body: JSON.stringify(payload),
+    body,
   });
 
   if (!response.ok) {

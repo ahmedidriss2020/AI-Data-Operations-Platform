@@ -41,7 +41,7 @@ npm --prefix apps/web install
 NEXT_PUBLIC_SUPABASE_URL=https://jweclsvkndyvltchnbcl.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_JY2wD5RWkxDH2TCjvhOlVw_ybsoGf2r
 HERMES_AGENT_ENDPOINT=http://YOUR_HOSTINGER_VPS_IP:8000
-HERMES_API_SECRET=hermes_sec_key_prod_987654321
+HERMES_API_SECRET=<set-in-.env.local-only>
 
 # 3. Start AnalyzeIt Dashboard
 npm run dev                 # http://127.0.0.1:3100
