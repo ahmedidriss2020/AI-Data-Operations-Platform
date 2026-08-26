@@ -1,18 +1,47 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
+import {
+  ACCEPTED_EXTENSIONS,
+  MAX_UPLOAD_BYTES,
+  formatBytes,
+  isAcceptedFilename,
+} from '@/lib/storage';
+import { UPLOAD_PHASE_LABEL, uploadStatement, type UploadPhase } from '@/lib/upload-client';
 import { ErrorText, Spinner, buttonClass, buttonStyle, inputFocusHandler, inputStyle } from '@/components/ui';
 
+type Dataset = { id: string; name: string };
+
 type Turn = {
-  role: 'user' | 'assistant';
+  /** 'note' is the app talking about itself -- an upload that landed, say. */
+  role: 'user' | 'assistant' | 'note';
   content: string;
   warnings?: string[];
   pending?: boolean;
 };
 
+/** Name used when a chat upload has no dataset to join yet. */
+const DEFAULT_DATASET_NAME = 'Bank statements';
+
 /**
- * The accountant-facing chat surface (PRD v3 section 4).
+ * Openers offered before the first question.
+ *
+ * A blank composer asks the accountant to guess what the tool can be asked,
+ * and the usual guess is either far too vague or something the tool layer
+ * cannot compute. Each of these maps onto work the tools actually do.
+ */
+const STARTER_QUESTIONS = [
+  'Summarise this statement: total in, total out, closing balance.',
+  'What were the ten largest payments, and who did they go to?',
+  'Which payments recur every month?',
+  'Are there any duplicate transactions?',
+];
+
+/**
+ * The accountant-facing chat surface (PRD v3 section 4) -- now presented as the
+ * AI Bank Statement Analyzer, the app's single screen.
  *
  * What this component deliberately does not do is as important as what it does.
  * It shows the agent's prose and nothing else: no tool payloads, no model name,
@@ -23,36 +52,55 @@ type Turn = {
  * the positioning legally load-bearing -- AnalyzeIt is a copilot and the
  * accountant signs off -- so the interface has to say so where the answers
  * appear, not only in the terms of service.
+ *
+ * Uploading lives here as well as on the panel above. Attaching the statement
+ * you are about to ask about, in the place you ask about it, is the whole
+ * gesture; making someone scroll up to a separate form to do it breaks the one
+ * thing this screen is for. The upload path is the shared one, so a file
+ * attached here is hashed, versioned and audited exactly like any other.
  */
 export function HermesChat({
   workspaceId,
   workspaceName,
+  datasets,
+  statementCount,
 }: {
   workspaceId: string;
   workspaceName: string;
+  datasets: Dataset[];
+  statementCount: number;
 }) {
+  const router = useRouter();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [upload, setUpload] = useState<{ name: string; phase: UploadPhase } | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadedHere, setUploadedHere] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const uploading = upload !== null;
+  const hasStatements = statementCount + uploadedHere > 0;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [turns]);
+  }, [turns, upload]);
 
-  async function send() {
-    const message = draft.trim();
+  async function send(text?: string) {
+    const message = (text ?? draft).trim();
     if (!message || busy) return;
 
     setError(null);
     setBusy(true);
     setDraft('');
 
-    // The history sent upstream is the state *before* this turn, so the agent
-    // never receives the pending placeholder as if it were a real reply.
+    // The history sent upstream is the state *before* this turn, and carries
+    // only the real dialogue: the pending placeholder is not an answer, and an
+    // upload note is the app narrating itself, not something the agent said.
     const history = turns
-      .filter((turn) => !turn.pending)
+      .filter((turn) => !turn.pending && turn.role !== 'note')
       .map(({ role, content }) => ({ role, content }));
 
     setTurns((current) => [
@@ -86,57 +134,161 @@ export function HermesChat({
     }
   }
 
+  async function attach(file: File | undefined) {
+    if (!file || uploading) return;
+
+    setError(null);
+    if (!isAcceptedFilename(file.name)) {
+      setError(`Only ${ACCEPTED_EXTENSIONS.join(', ')} files are accepted`);
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(`${file.name} is ${formatBytes(file.size)}; the maximum is ${formatBytes(MAX_UPLOAD_BYTES)}`);
+      return;
+    }
+
+    setUpload({ name: file.name, phase: 'hashing' });
+
+    try {
+      // A chat upload joins the client's existing statement set rather than
+      // asking which one; the panel above is where that choice is made.
+      await uploadStatement({
+        workspaceId,
+        file,
+        datasetId: datasets[0]?.id ?? null,
+        datasetName: datasets[0] ? null : DEFAULT_DATASET_NAME,
+        onPhase: (phase) => setUpload((current) => (current ? { ...current, phase } : current)),
+      });
+
+      setUploadedHere((count) => count + 1);
+      setTurns((current) => [
+        ...current,
+        {
+          role: 'note',
+          content: `Uploaded ${file.name} (${formatBytes(file.size)}). Fingerprinted, versioned and stored — you can ask about it now.`,
+        },
+      ]);
+      // The panel above counts this client's statements server-side.
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Upload failed');
+    } finally {
+      setUpload(null);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
   return (
-    <div className="flex h-[calc(100vh-16rem)] min-h-[26rem] flex-col">
+    <div className="flex h-[34rem] min-h-[28rem] flex-col">
       <div
         ref={scrollRef}
-        className="flex-1 space-y-4 overflow-y-auto rounded-2xl border p-5"
-        style={{ borderColor: 'var(--az-border)', background: 'var(--az-bg-sidebar)' }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragActive(true);
+        }}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragActive(false);
+          void attach(event.dataTransfer.files?.[0]);
+        }}
+        className="relative flex-1 space-y-4 overflow-y-auto rounded-2xl border p-5 transition-colors"
+        style={{
+          borderColor: dragActive ? 'rgba(16,185,129,.5)' : 'var(--az-border)',
+          background: dragActive ? 'rgba(16,185,129,.05)' : 'var(--az-bg-sidebar)',
+        }}
       >
-        {turns.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm font-semibold text-slate-300">
-              Ask Hermes about {workspaceName}
-            </p>
-            <p className="max-w-md text-xs leading-relaxed text-slate-500">
-              Questions are answered by running tools against this workspace&apos;s data, so every
-              number can be traced back to its source rows, dataset version and recipe version.
-            </p>
+        {dragActive && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-slate-950/70 text-sm font-bold text-emerald-300">
+            Drop the statement to upload it
           </div>
         )}
 
-        {turns.map((turn, index) => (
-          <div
-            key={index}
-            className={`flex ${turn.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed"
-              style={
-                turn.role === 'user'
-                  ? { background: 'rgba(16,185,129,.14)', border: '1px solid rgba(16,185,129,.3)', color: '#d1fae5' }
-                  : { background: 'var(--az-bg-input)', border: '1px solid var(--az-border)', color: 'var(--az-text)' }
-              }
-            >
-              {turn.pending ? (
-                <span className="flex items-center gap-2 text-slate-400">
-                  <Spinner size={14} />
-                  Hermes is working…
-                </span>
-              ) : (
-                <span className="whitespace-pre-wrap">{turn.content}</span>
-              )}
+        {turns.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+            <p className="text-sm font-semibold text-slate-300">
+              Ask about {workspaceName}&apos;s bank statements
+            </p>
+            <p className="max-w-md text-xs leading-relaxed text-slate-500">
+              {hasStatements
+                ? 'Questions are answered by running tools over the statements uploaded for this client, so every number traces back to its source rows, dataset version and the file it came from.'
+                : 'Attach a statement below — or drop one here — and then ask about it. Answers are computed from the uploaded rows, so every number traces back to its source.'}
+            </p>
 
-              {turn.warnings && turn.warnings.length > 0 && (
-                <ul className="mt-3 space-y-1 border-t pt-2 text-xs text-amber-300" style={{ borderColor: 'var(--az-border)' }}>
-                  {turn.warnings.map((warning, i) => (
-                    <li key={i}>⚠ {warning}</li>
-                  ))}
-                </ul>
-              )}
+            {/* Openers. They send on click, so the first question costs one
+                tap rather than a blank page. */}
+            <div className="flex max-w-lg flex-wrap justify-center gap-2 pt-1">
+              {STARTER_QUESTIONS.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={() => void send(question)}
+                  disabled={busy}
+                  className="rounded-full border px-3 py-1.5 text-left text-[11px] font-semibold text-slate-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  style={{ borderColor: 'var(--az-border)', background: 'var(--az-bg-card)' }}
+                >
+                  {question}
+                </button>
+              ))}
             </div>
           </div>
-        ))}
+        )}
+
+        {turns.map((turn, index) =>
+          turn.role === 'note' ? (
+            <div key={index} className="flex justify-center">
+              <p
+                className="rounded-full border px-3 py-1.5 text-[11px] font-semibold text-emerald-300"
+                style={{ borderColor: 'rgba(16,185,129,.3)', background: 'rgba(16,185,129,.1)' }}
+              >
+                {turn.content}
+              </p>
+            </div>
+          ) : (
+            <div
+              key={index}
+              className={`flex ${turn.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed"
+                style={
+                  turn.role === 'user'
+                    ? { background: 'rgba(16,185,129,.14)', border: '1px solid rgba(16,185,129,.3)', color: '#d1fae5' }
+                    : { background: 'var(--az-bg-input)', border: '1px solid var(--az-border)', color: 'var(--az-text)' }
+                }
+              >
+                {turn.pending ? (
+                  <span className="flex items-center gap-2 text-slate-400">
+                    <Spinner size={14} />
+                    Analyzing the statements…
+                  </span>
+                ) : (
+                  <span className="whitespace-pre-wrap">{turn.content}</span>
+                )}
+
+                {turn.warnings && turn.warnings.length > 0 && (
+                  <ul className="mt-3 space-y-1 border-t pt-2 text-xs text-amber-300" style={{ borderColor: 'var(--az-border)' }}>
+                    {turn.warnings.map((warning, i) => (
+                      <li key={i}>⚠ {warning}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )
+        )}
+
+        {upload && (
+          <div className="flex justify-center">
+            <p
+              className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold text-slate-300"
+              style={{ borderColor: 'var(--az-border)', background: 'var(--az-bg-card)' }}
+            >
+              <Spinner size={12} />
+              {upload.name} — {UPLOAD_PHASE_LABEL[upload.phase]}
+            </p>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -146,6 +298,31 @@ export function HermesChat({
       )}
 
       <div className="mt-4 flex items-end gap-3">
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          accept={ACCEPTED_EXTENSIONS.join(',')}
+          onChange={(event) => void attach(event.target.files?.[0])}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          title={`Attach a bank statement (${ACCEPTED_EXTENSIONS.join(', ')}, up to ${formatBytes(MAX_UPLOAD_BYTES)})`}
+          aria-label="Attach a bank statement"
+          className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl border text-slate-400 transition-colors hover:border-emerald-500/40 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+          style={{ borderColor: 'var(--az-border)', background: 'var(--az-bg-card)' }}
+        >
+          {uploading ? (
+            <Spinner size={16} />
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          )}
+        </button>
+
         <textarea
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -156,7 +333,7 @@ export function HermesChat({
             }
           }}
           rows={2}
-          placeholder="Ask about this client's data… (Enter to send, Shift+Enter for a new line)"
+          placeholder="Ask about this client's bank statements… (Enter to send, Shift+Enter for a new line)"
           className="w-full resize-none rounded-xl px-4 py-3 text-sm outline-none transition-all duration-200 placeholder:text-slate-500"
           style={inputStyle}
           {...inputFocusHandler}
@@ -174,8 +351,8 @@ export function HermesChat({
       </div>
 
       <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">
-        Hermes proposes and explains; deterministic tools calculate. Every figure traces to source
-        rows. Material changes still require your sign-off.
+        The analyzer proposes and explains; deterministic tools calculate. Every figure traces to
+        source rows. Material changes still require your sign-off.
       </p>
     </div>
   );

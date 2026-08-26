@@ -3,43 +3,21 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 
-import { createBrowserSupabase } from '@/lib/supabase/client';
 import {
   ACCEPTED_EXTENSIONS,
   MAX_UPLOAD_BYTES,
   formatBytes,
   isAcceptedFilename,
-  mimeForFilename,
 } from '@/lib/storage';
+import {
+  UPLOAD_PHASE_LABEL,
+  UPLOAD_PHASE_PROGRESS,
+  uploadStatement,
+  type UploadPhase,
+} from '@/lib/upload-client';
 import { ErrorText, Field, ProgressBar, Spinner, buttonClass, buttonStyle, inputClass, inputFocusHandler, inputStyle } from '@/components/ui';
 
 type Dataset = { id: string; name: string };
-
-type Phase = 'idle' | 'hashing' | 'uploading' | 'finalising';
-
-/**
- * Labels describe what the app is actually doing at that moment.
- *
- * An earlier version showed a "Hermes Agent executing Python/DuckDB cleaning
- * pipeline" step backed by nothing but a 1.2s timer. In a product whose entire
- * claim is that every number is traceable, a progress bar that reports work
- * which never happened is not a cosmetic bug -- it is the product lying about
- * provenance. The parse/replay step returns here when the tool layer
- * (PRD v3 section 7) can actually run it.
- */
-const PHASE_LABEL: Record<Phase, string> = {
-  idle: '',
-  hashing: 'Fingerprinting file (SHA-256)…',
-  uploading: 'Uploading to encrypted storage…',
-  finalising: 'Recording dataset version & audit entry…',
-};
-
-const PHASE_PROGRESS: Record<Phase, number> = {
-  idle: 0,
-  hashing: 25,
-  uploading: 65,
-  finalising: 90,
-};
 
 export function UploadPanel({
   workspaceId,
@@ -50,7 +28,7 @@ export function UploadPanel({
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<UploadPhase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [datasetId, setDatasetId] = useState<string>(datasets[0]?.id ?? '');
   const [datasetName, setDatasetName] = useState('');
@@ -91,54 +69,20 @@ export function UploadPanel({
     }
 
     try {
-      setPhase('hashing');
-      const sha256 = await sha256Hex(file);
-
-      setPhase('uploading');
-      const signResponse = await fetch('/api/uploads/sign', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId,
-          filename: file.name,
-          byteSize: file.size,
-          datasetId: creatingNewDataset ? null : datasetId,
-          datasetName: creatingNewDataset ? datasetName.trim() : null,
-        }),
+      const { datasetId: createdDatasetId } = await uploadStatement({
+        workspaceId,
+        file,
+        datasetId: creatingNewDataset ? null : datasetId,
+        datasetName: creatingNewDataset ? datasetName.trim() : null,
+        instructions: agentInstructions,
+        onPhase: setPhase,
       });
-
-      const signed = await signResponse.json();
-      if (!signResponse.ok) throw new Error(signed.error ?? 'Could not start the upload');
-
-      const body = new File([file], file.name, { type: mimeForFilename(file.name) });
-
-      const supabase = createBrowserSupabase();
-      const { error: uploadError } = await supabase.storage
-        .from(signed.bucket)
-        .uploadToSignedUrl(signed.storagePath, signed.token, body);
-
-      if (uploadError) throw new Error(uploadError.message);
-
-      setPhase('finalising');
-      const completeResponse = await fetch('/api/uploads/complete', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          uploadId: signed.uploadId,
-          workspaceId,
-          sha256,
-          instructions: agentInstructions.trim() || null,
-        }),
-      });
-
-      const completed = await completeResponse.json();
-      if (!completeResponse.ok) throw new Error(completed.error ?? 'Could not record the upload');
 
       if (inputRef.current) inputRef.current.value = '';
       setSelectedFile(null);
       setDatasetName('');
       setAgentInstructions('');
-      if (signed.datasetId) setDatasetId(signed.datasetId);
+      if (createdDatasetId) setDatasetId(createdDatasetId);
       router.refresh();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Upload failed');
@@ -150,8 +94,8 @@ export function UploadPanel({
   return (
     <form onSubmit={onSubmit} method="post" className="space-y-5">
       <Field
-        label="Recurring Dataset"
-        hint="Group monthly client exports together under a versioned dataset."
+        label="Statement set"
+        hint="Group a client's monthly statement exports together under one versioned dataset."
       >
         <select
           className={inputClass}
@@ -178,7 +122,7 @@ export function UploadPanel({
             {...inputFocusHandler}
             value={datasetName}
             onChange={(e) => setDatasetName(e.target.value)}
-            placeholder="e.g. Monthly Sales & Ledger Export"
+            placeholder="e.g. Barclays Current Account — Monthly"
             maxLength={200}
             disabled={busy}
           />
@@ -187,8 +131,8 @@ export function UploadPanel({
 
       {/* Hermes Agent Prompt Instructions */}
       <Field
-        label="Cleaning instructions for Hermes"
-        hint="Recorded with the upload and used when this workbook is processed (e.g. remove subtotal rows, convert negative parentheses, match vendor codes)."
+        label="Cleaning instructions (optional)"
+        hint="Recorded with the upload and used when this statement is processed (e.g. drop carried-forward balance rows, treat bracketed amounts as negative, split combined debit/credit columns)."
       >
         <textarea
           className={inputClass}
@@ -196,13 +140,13 @@ export function UploadPanel({
           {...inputFocusHandler}
           value={agentInstructions}
           onChange={(e) => setAgentInstructions(e.target.value)}
-          placeholder="e.g. Remove subtotal rows, normalize dates to ISO-8601, and match supplier names against mapping table vm_412."
+          placeholder="e.g. Ignore the running-balance rows, normalize dates to ISO-8601, and treat amounts in brackets as money out."
           disabled={busy}
         />
       </Field>
 
       {/* Drag & Drop File Zone */}
-      <Field label="Upload File" hint={`Supports ${ACCEPTED_EXTENSIONS.join(', ')} · Up to ${formatBytes(MAX_UPLOAD_BYTES)}`}>
+      <Field label="Bank statement file" hint={`Supports ${ACCEPTED_EXTENSIONS.join(', ')} · Up to ${formatBytes(MAX_UPLOAD_BYTES)}`}>
         <div
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
           onDragLeave={() => setDragActive(false)}
@@ -261,10 +205,10 @@ export function UploadPanel({
           ) : (
             <div>
               <p className="text-sm font-semibold" style={{ color: 'var(--az-text)' }}>
-                Click to select or drag and drop workbook
+                Click to select or drag and drop a bank statement
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--az-text-subtle)' }}>
-                Raw files are hashed, versioned, and queued for Hermes
+                Raw files are hashed, versioned, and queued for analysis
               </p>
             </div>
           )}
@@ -273,7 +217,7 @@ export function UploadPanel({
 
       {busy && (
         <div className="az-animate-in">
-          <ProgressBar progress={PHASE_PROGRESS[phase]} label={PHASE_LABEL[phase]} />
+          <ProgressBar progress={UPLOAD_PHASE_PROGRESS[phase]} label={UPLOAD_PHASE_LABEL[phase]} />
         </div>
       )}
 
@@ -286,17 +230,9 @@ export function UploadPanel({
             <span>Uploading…</span>
           </>
         ) : (
-          'Upload workbook'
+          'Upload statement'
         )}
       </button>
     </form>
   );
-}
-
-async function sha256Hex(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest('SHA-256', buffer);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
 }
