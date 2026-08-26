@@ -8,13 +8,17 @@ import { Card } from '@/components/ui';
 type Dataset = { id: string; name: string };
 
 /**
- * Upload, on the analyzer page itself.
+ * Upload with the full set of options, on the analyzer page itself.
  *
  * With the workspace pages out of the navigation, uploading a statement had to
  * come to where the questions are asked -- otherwise the only route to the one
- * remaining screen's data would be a URL the accountant is never shown. It
- * starts expanded when the client has nothing uploaded yet, because at that
- * point uploading is the only useful thing on the page.
+ * remaining screen's data would be a URL the accountant is never shown.
+ *
+ * Day to day the attachment button in the chat composer is the faster path and
+ * covers the common case. This panel is where the choices that composer skips
+ * get made: which statement set the file joins, and the cleaning instructions
+ * recorded against it. So it starts collapsed and states what the client
+ * already has.
  */
 export function StatementUpload({
   workspaceId,
@@ -27,7 +31,7 @@ export function StatementUpload({
   datasets: Dataset[];
   statementCount: number;
 }) {
-  const [open, setOpen] = useState(statementCount === 0);
+  const [open, setOpen] = useState(false);
 
   return (
     <Card className="space-y-4">
@@ -36,7 +40,7 @@ export function StatementUpload({
           <p className="text-sm font-bold text-slate-100">Bank statements for {workspaceName}</p>
           <p className="mt-0.5 text-xs text-slate-400">
             {statementCount === 0
-              ? 'Nothing uploaded yet — add a statement export before asking questions about it.'
+              ? 'Nothing uploaded yet. Attach one in the chat below, or open this panel to choose a statement set and add cleaning instructions.'
               : `${statementCount} statement${statementCount === 1 ? '' : 's'} uploaded. Answers are computed from these files.`}
           </p>
         </div>
@@ -48,7 +52,7 @@ export function StatementUpload({
           style={{ borderColor: 'var(--az-border)' }}
           aria-expanded={open}
         >
-          {open ? 'Hide upload' : 'Upload a statement'}
+          {open ? 'Hide options' : 'Upload with options'}
         </button>
       </div>
 

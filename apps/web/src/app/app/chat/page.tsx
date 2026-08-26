@@ -152,7 +152,12 @@ export default async function AnalyzerPage({
             datasets={datasets}
             statementCount={statementCount}
           />
-          <HermesChat workspaceId={active.id} workspaceName={active.client_name ?? active.name} />
+          <HermesChat
+            workspaceId={active.id}
+            workspaceName={active.client_name ?? active.name}
+            datasets={datasets}
+            statementCount={statementCount}
+          />
         </>
       )}
     </div>
