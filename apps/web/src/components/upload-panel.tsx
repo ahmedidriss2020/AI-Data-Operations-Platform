@@ -150,8 +150,8 @@ export function UploadPanel({
   return (
     <form onSubmit={onSubmit} method="post" className="space-y-5">
       <Field
-        label="Recurring Dataset"
-        hint="Group monthly client exports together under a versioned dataset."
+        label="Statement set"
+        hint="Group a client's monthly statement exports together under one versioned dataset."
       >
         <select
           className={inputClass}
@@ -178,7 +178,7 @@ export function UploadPanel({
             {...inputFocusHandler}
             value={datasetName}
             onChange={(e) => setDatasetName(e.target.value)}
-            placeholder="e.g. Monthly Sales & Ledger Export"
+            placeholder="e.g. Barclays Current Account — Monthly"
             maxLength={200}
             disabled={busy}
           />
@@ -187,8 +187,8 @@ export function UploadPanel({
 
       {/* Hermes Agent Prompt Instructions */}
       <Field
-        label="Cleaning instructions for Hermes"
-        hint="Recorded with the upload and used when this workbook is processed (e.g. remove subtotal rows, convert negative parentheses, match vendor codes)."
+        label="Cleaning instructions (optional)"
+        hint="Recorded with the upload and used when this statement is processed (e.g. drop carried-forward balance rows, treat bracketed amounts as negative, split combined debit/credit columns)."
       >
         <textarea
           className={inputClass}
@@ -196,13 +196,13 @@ export function UploadPanel({
           {...inputFocusHandler}
           value={agentInstructions}
           onChange={(e) => setAgentInstructions(e.target.value)}
-          placeholder="e.g. Remove subtotal rows, normalize dates to ISO-8601, and match supplier names against mapping table vm_412."
+          placeholder="e.g. Ignore the running-balance rows, normalize dates to ISO-8601, and treat amounts in brackets as money out."
           disabled={busy}
         />
       </Field>
 
       {/* Drag & Drop File Zone */}
-      <Field label="Upload File" hint={`Supports ${ACCEPTED_EXTENSIONS.join(', ')} · Up to ${formatBytes(MAX_UPLOAD_BYTES)}`}>
+      <Field label="Bank statement file" hint={`Supports ${ACCEPTED_EXTENSIONS.join(', ')} · Up to ${formatBytes(MAX_UPLOAD_BYTES)}`}>
         <div
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
           onDragLeave={() => setDragActive(false)}
@@ -261,10 +261,10 @@ export function UploadPanel({
           ) : (
             <div>
               <p className="text-sm font-semibold" style={{ color: 'var(--az-text)' }}>
-                Click to select or drag and drop workbook
+                Click to select or drag and drop a bank statement
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--az-text-subtle)' }}>
-                Raw files are hashed, versioned, and queued for Hermes
+                Raw files are hashed, versioned, and queued for analysis
               </p>
             </div>
           )}
@@ -286,7 +286,7 @@ export function UploadPanel({
             <span>Uploading…</span>
           </>
         ) : (
-          'Upload workbook'
+          'Upload statement'
         )}
       </button>
     </form>

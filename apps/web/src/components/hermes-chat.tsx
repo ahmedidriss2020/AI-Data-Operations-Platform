@@ -12,7 +12,8 @@ type Turn = {
 };
 
 /**
- * The accountant-facing chat surface (PRD v3 section 4).
+ * The accountant-facing chat surface (PRD v3 section 4) -- now presented as the
+ * AI Bank Statement Analyzer, the app's single screen.
  *
  * What this component deliberately does not do is as important as what it does.
  * It shows the agent's prose and nothing else: no tool payloads, no model name,
@@ -87,7 +88,7 @@ export function HermesChat({
   }
 
   return (
-    <div className="flex h-[calc(100vh-16rem)] min-h-[26rem] flex-col">
+    <div className="flex h-[32rem] min-h-[26rem] flex-col">
       <div
         ref={scrollRef}
         className="flex-1 space-y-4 overflow-y-auto rounded-2xl border p-5"
@@ -96,11 +97,12 @@ export function HermesChat({
         {turns.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <p className="text-sm font-semibold text-slate-300">
-              Ask Hermes about {workspaceName}
+              Ask about {workspaceName}&apos;s bank statements
             </p>
             <p className="max-w-md text-xs leading-relaxed text-slate-500">
-              Questions are answered by running tools against this workspace&apos;s data, so every
-              number can be traced back to its source rows, dataset version and recipe version.
+              Questions are answered by running tools over the statements uploaded for this
+              client, so every number traces back to its source rows, dataset version and the file
+              it came from. Try &ldquo;what were the largest payments last month?&rdquo;
             </p>
           </div>
         )}
@@ -121,7 +123,7 @@ export function HermesChat({
               {turn.pending ? (
                 <span className="flex items-center gap-2 text-slate-400">
                   <Spinner size={14} />
-                  Hermes is working…
+                  Analyzing the statements…
                 </span>
               ) : (
                 <span className="whitespace-pre-wrap">{turn.content}</span>
@@ -156,7 +158,7 @@ export function HermesChat({
             }
           }}
           rows={2}
-          placeholder="Ask about this client's data… (Enter to send, Shift+Enter for a new line)"
+          placeholder="Ask about this client's bank statements… (Enter to send, Shift+Enter for a new line)"
           className="w-full resize-none rounded-xl px-4 py-3 text-sm outline-none transition-all duration-200 placeholder:text-slate-500"
           style={inputStyle}
           {...inputFocusHandler}
@@ -174,8 +176,8 @@ export function HermesChat({
       </div>
 
       <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">
-        Hermes proposes and explains; deterministic tools calculate. Every figure traces to source
-        rows. Material changes still require your sign-off.
+        The analyzer proposes and explains; deterministic tools calculate. Every figure traces to
+        source rows. Material changes still require your sign-off.
       </p>
     </div>
   );
