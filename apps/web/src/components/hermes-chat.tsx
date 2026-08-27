@@ -14,11 +14,20 @@ import { ErrorText, Spinner, buttonClass, buttonStyle, inputFocusHandler, inputS
 
 type Dataset = { id: string; name: string };
 
+type Download = {
+  filename: string;
+  url: string;
+  format?: string;
+  rows?: number;
+  expires_in_seconds?: number;
+};
+
 type Turn = {
   /** 'note' is the app talking about itself -- an upload that landed, say. */
   role: 'user' | 'assistant' | 'note';
   content: string;
   warnings?: string[];
+  downloads?: Download[];
   pending?: boolean;
 };
 
@@ -121,7 +130,12 @@ export function HermesChat({
 
       setTurns((current) => [
         ...current.slice(0, -1),
-        { role: 'assistant', content: body.reply || '(no answer returned)', warnings: body.warnings },
+        {
+          role: 'assistant',
+          content: body.reply || '(no answer returned)',
+          warnings: body.warnings,
+          downloads: Array.isArray(body.downloads) ? body.downloads : undefined,
+        },
       ]);
     } catch (caught) {
       // Drop the placeholder *and* the question. Leaving an unanswered question
@@ -272,6 +286,32 @@ export function HermesChat({
                       <li key={i}>⚠ {warning}</li>
                     ))}
                   </ul>
+                )}
+
+                {turn.downloads && turn.downloads.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2 border-t pt-3" style={{ borderColor: 'var(--az-border)' }}>
+                    {turn.downloads.map((file, i) => (
+                      <a
+                        key={i}
+                        href={file.url}
+                        download={file.filename}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:border-emerald-500/50 hover:bg-emerald-500/10"
+                        style={{ borderColor: 'rgba(16,185,129,.35)', background: 'rgba(16,185,129,.06)' }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        Download {file.filename}
+                        {typeof file.rows === 'number' && (
+                          <span className="text-emerald-500/70">· {file.rows} rows</span>
+                        )}
+                      </a>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

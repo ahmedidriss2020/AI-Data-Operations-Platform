@@ -87,6 +87,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       reply: envelope.result?.reply ?? '',
+      downloads: envelope.result?.downloads ?? [],
       status: envelope.status,
       warnings: envelope.warnings ?? [],
       executionMetadata: envelope.execution_metadata ?? {},

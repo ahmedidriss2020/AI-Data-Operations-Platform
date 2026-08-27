@@ -99,6 +99,14 @@ export type HermesHealth = {
   detail?: string;
 };
 
+export type HermesDownload = {
+  filename: string;
+  url: string;
+  format?: string;
+  rows?: number;
+  expires_in_seconds?: number;
+};
+
 export type HermesChatMessage = {
   role: 'user' | 'assistant';
   content: string;
@@ -269,7 +277,7 @@ export async function hermesChat(input: {
   userId: string;
   message: string;
   history: HermesChatMessage[];
-}): Promise<HermesEnvelope<{ reply: string }>> {
+}): Promise<HermesEnvelope<{ reply: string; downloads?: HermesDownload[] }>> {
   if (isHermesConfigured()) {
     const scopeToken = mintScopeToken({
       orgId: input.orgId,
@@ -277,7 +285,7 @@ export async function hermesChat(input: {
       userId: input.userId,
     });
 
-    return call<HermesEnvelope<{ reply: string }>>('/api/v1/chat', {
+    return call<HermesEnvelope<{ reply: string; downloads?: HermesDownload[] }>>('/api/v1/chat', {
       workspace_id: input.workspaceId,
       org_id: input.orgId,
       message: input.message,
@@ -295,7 +303,7 @@ export async function hermesChat(input: {
     });
     return {
       status: reply ? 'ok' : 'error',
-      result: { reply },
+      result: { reply, downloads: [] },
       evidence: { mode: 'conversational', tools_used: [] },
       warnings: [
         'Data-analysis engine not connected: this reply cannot read uploaded files. Answers about specific figures require the analysis service.',

@@ -492,6 +492,7 @@ async def chat(request: FastAPIRequest,
         "Content-Type": "application/json",
     }
     tool_trace: list[dict[str, Any]] = []
+    downloads: list[dict[str, Any]] = []
     reply_text = ""
 
     async with httpx.AsyncClient(timeout=60) as client:
@@ -537,6 +538,14 @@ async def chat(request: FastAPIRequest,
                 except Exception as exc:  # tool errors go back to the model, not the user
                     result = {"error": str(exc)[:300]}
                 tool_trace.append({"tool": fn, "args": args})
+                if fn == "export_dataset" and isinstance(result, dict) and result.get("download_url"):
+                    downloads.append({
+                        "filename": f"{result.get('exported', 'dataset')}.{result.get('format', 'xlsx')}",
+                        "url": result["download_url"],
+                        "format": result.get("format", "xlsx"),
+                        "rows": result.get("rows"),
+                        "expires_in_seconds": result.get("expires_in_seconds"),
+                    })
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call["id"],
@@ -547,7 +556,7 @@ async def chat(request: FastAPIRequest,
 
     return {
         "status": "ok" if reply_text else "error",
-        "result": {"reply": reply_text},
+        "result": {"reply": reply_text, "downloads": downloads},
         "evidence": {
             "tools_used": tool_trace,
             "scope": evidence_scope,
