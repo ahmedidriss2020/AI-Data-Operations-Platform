@@ -125,7 +125,29 @@ export function HermesChat({
         body: JSON.stringify({ workspaceId, message, history }),
       });
 
-      const body = await response.json();
+      // The body is not guaranteed to be JSON. When the parser cold-starts and
+      // the analysis runs past the serverless function's wall-clock cap, Vercel
+      // kills the function and returns its own plain-text error page ("An error
+      // occurred..."). Calling response.json() on that throws an opaque
+      // "Unexpected token 'A'". Read text first, parse defensively, and turn a
+      // non-JSON body into a message a user can act on.
+      const raw = await response.text();
+      let body: {
+        error?: string;
+        reply?: string;
+        warnings?: string[];
+        downloads?: unknown;
+      } = {};
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        // Non-JSON body: almost always the platform timing out the function.
+        throw new Error(
+          response.status === 504 || response.status === 502
+            ? 'The analysis is taking longer than this plan allows. The engine may be waking up — try again in a moment.'
+            : 'The agent was interrupted before it could answer. Please try again in a moment.',
+        );
+      }
       if (!response.ok) throw new Error(body.error ?? 'The agent could not answer');
 
       setTurns((current) => [
