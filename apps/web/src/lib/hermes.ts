@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createHmac } from 'node:crypto';
 
+import { isLocalChatConfigured, localChat } from '@/lib/agent/openrouter-chat';
 import { mintScopeToken } from '@/lib/tool-layer/scope-token';
 
 export interface WebhookEventPayload {
@@ -123,10 +124,22 @@ function endpoint(): string | null {
 }
 
 /**
- * Whether the bridge has both halves of its configuration.
+ * Whether the hosted parser/agent bridge has both halves of its configuration.
+ * This is the FULL path (parser with DuckDB/Polars tools).
  */
 export function isHermesConfigured(): boolean {
   return Boolean(endpoint() && process.env.HERMES_API_SECRET);
+}
+
+/**
+ * Whether chat can answer at all -- either via the hosted parser (full,
+ * tool-grounded analysis) or the in-process OpenRouter fallback
+ * (conversational only). Used by the health indicator and the chat route so
+ * the deployed Vercel site reports chat as available even before the parser
+ * is hosted.
+ */
+export function isChatAvailable(): boolean {
+  return isHermesConfigured() || isLocalChatConfigured();
 }
 
 async function call<T>(
@@ -190,7 +203,17 @@ async function call<T>(
 export async function hermesHealth(): Promise<HermesHealth> {
   const base = endpoint();
 
+  // No hosted parser, but in-process OpenRouter chat is available: report as
+  // reachable in conversational mode so the deployed site shows chat as live.
   if (!isHermesConfigured()) {
+    if (isLocalChatConfigured()) {
+      return {
+        configured: true,
+        reachable: true,
+        status: 'conversational',
+        detail: 'Conversational mode (analysis engine not connected)',
+      };
+    }
     return { configured: false, reachable: false, detail: 'Not configured' };
   }
 
@@ -231,7 +254,14 @@ export async function hermesHealth(): Promise<HermesHealth> {
 }
 
 /**
- * Ask Hermes a question inside one workspace.
+ * Ask the copilot a question inside one workspace.
+ *
+ * Two paths, chosen by configuration:
+ *  - Hosted parser present (HERMES_AGENT_ENDPOINT set): route to the parser's
+ *    /api/v1/chat, which runs DuckDB/Polars tools over the uploaded dataset.
+ *    Full, data-grounded analysis.
+ *  - Parser absent (e.g. Vercel-only deploy): answer in-process via OpenRouter.
+ *    Conversational only -- no dataset access, never fabricates figures.
  */
 export async function hermesChat(input: {
   workspaceId: string;
@@ -240,20 +270,49 @@ export async function hermesChat(input: {
   message: string;
   history: HermesChatMessage[];
 }): Promise<HermesEnvelope<{ reply: string }>> {
-  const scopeToken = mintScopeToken({
-    orgId: input.orgId,
-    workspaceId: input.workspaceId,
-    userId: input.userId,
-  });
+  if (isHermesConfigured()) {
+    const scopeToken = mintScopeToken({
+      orgId: input.orgId,
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+    });
 
-  return call<HermesEnvelope<{ reply: string }>>('/api/v1/chat', {
-    workspace_id: input.workspaceId,
-    org_id: input.orgId,
-    message: input.message,
-    history: input.history,
-    scope_token: scopeToken,
-    tool_layer_url: process.env.TOOL_LAYER_PUBLIC_URL ?? null,
-  });
+    return call<HermesEnvelope<{ reply: string }>>('/api/v1/chat', {
+      workspace_id: input.workspaceId,
+      org_id: input.orgId,
+      message: input.message,
+      history: input.history,
+      scope_token: scopeToken,
+      tool_layer_url: process.env.TOOL_LAYER_PUBLIC_URL ?? null,
+    });
+  }
+
+  // Fallback: in-process conversational reply (no dataset tools).
+  if (isLocalChatConfigured()) {
+    const { reply, model, durationMs } = await localChat({
+      message: input.message,
+      history: input.history,
+    });
+    return {
+      status: reply ? 'ok' : 'error',
+      result: { reply },
+      evidence: { mode: 'conversational', tools_used: [] },
+      warnings: [
+        'Data-analysis engine not connected: this reply cannot read uploaded files. Answers about specific figures require the analysis service.',
+      ],
+      execution_metadata: {
+        duration_ms: durationMs,
+        model,
+        dry_run: false,
+        mode: 'local-openrouter',
+      },
+    };
+  }
+
+  throw new HermesError(
+    'Chat is not configured. Set OPENROUTER_API_KEY (conversational) or HERMES_AGENT_ENDPOINT + HERMES_API_SECRET (full analysis).',
+    503,
+  );
 }
 
 /**

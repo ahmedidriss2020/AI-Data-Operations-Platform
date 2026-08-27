@@ -6,7 +6,7 @@ import { HermesChat } from '@/components/hermes-chat';
 import { StatementUpload } from '@/components/statement-upload';
 import { Card, EmptyState, PageHeader } from '@/components/ui';
 import { requireCurrentOrg } from '@/lib/authz';
-import { isHermesConfigured } from '@/lib/hermes';
+import { isChatAvailable, isHermesConfigured } from '@/lib/hermes';
 import { createServerSupabase } from '@/lib/supabase/server';
 
 export const metadata = { title: 'AI Bank Statement Analyzer · AnalyzeIt' };
@@ -104,17 +104,34 @@ export default async function AnalyzerPage({
 
       <AnalyzerIntro />
 
-      {!isHermesConfigured() && (
+      {/* Three states: full analysis (parser hosted), conversational-only
+          (OpenRouter but no parser), or nothing configured. */}
+      {!isChatAvailable() ? (
         <Card className="border-amber-500/30">
-          <p className="text-sm font-semibold text-amber-300">The analyzer is not connected yet</p>
+          <p className="text-sm font-semibold text-amber-300">Chat is not connected yet</p>
           <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
-            This deployment has no agent endpoint configured, so questions cannot be answered.
+            This deployment has no chat provider configured, so questions cannot be answered.
             Statements can still be uploaded. An administrator needs to set{' '}
-            <code className="text-slate-300">HERMES_AGENT_ENDPOINT</code> and{' '}
-            <code className="text-slate-300">HERMES_API_SECRET</code> on the server — see{' '}
+            <code className="text-slate-300">OPENROUTER_API_KEY</code> (conversational) or{' '}
+            <code className="text-slate-300">HERMES_AGENT_ENDPOINT</code> +{' '}
+            <code className="text-slate-300">HERMES_API_SECRET</code> (full analysis) — see{' '}
             <code className="text-slate-300">HERMES_DASHBOARD_INTEGRATION.md</code>.
           </p>
         </Card>
+      ) : (
+        !isHermesConfigured() && (
+          <Card className="border-sky-500/30">
+            <p className="text-sm font-semibold text-sky-300">Conversational mode</p>
+            <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
+              You can chat with the copilot about your workflow and how to use the tool. The
+              data-analysis engine that reads and computes over uploaded statements is not
+              connected to this deployment yet, so the copilot will not quote figures from a
+              file until an administrator sets{' '}
+              <code className="text-slate-300">HERMES_AGENT_ENDPOINT</code>. Uploads are stored
+              and will be analyzable once it is connected.
+            </p>
+          </Card>
+        )
       )}
 
       {/* Client selector. Links rather than a client-side control so the chosen

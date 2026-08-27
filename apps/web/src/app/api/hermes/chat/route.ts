@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { handleRouteError } from '@/lib/api';
 import { adminFor, requireWorkspaceAccess } from '@/lib/authz';
 import type { Json } from '@/lib/database.types';
-import { HermesError, hermesChat, isHermesConfigured } from '@/lib/hermes';
+import { HermesError, hermesChat, isChatAvailable } from '@/lib/hermes';
 
 /**
  * The customer-facing chat turn (PRD v3 section 4).
@@ -41,12 +41,12 @@ export async function POST(request: Request) {
     // Authorize before anything else touches the agent.
     const context = await requireWorkspaceAccess(body.workspaceId);
 
-    if (!isHermesConfigured()) {
+    if (!isChatAvailable()) {
       return NextResponse.json(
         {
           error:
-            'The Hermes agent is not connected to this deployment yet. ' +
-            'An administrator needs to set HERMES_AGENT_ENDPOINT and HERMES_API_SECRET.',
+            'Chat is not connected to this deployment yet. An administrator needs to set ' +
+            'OPENROUTER_API_KEY (conversational) or HERMES_AGENT_ENDPOINT + HERMES_API_SECRET (full analysis).',
         },
         { status: 503 },
       );
