@@ -125,7 +125,7 @@ export class HermesError extends Error {
   }
 }
 
-const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 300_000;
 const HEALTH_TIMEOUT_MS = 5_000;
 
 function endpoint(): string | null {

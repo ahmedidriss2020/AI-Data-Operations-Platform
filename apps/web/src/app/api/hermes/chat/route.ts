@@ -23,6 +23,12 @@ import { HermesError, hermesChat, isChatAvailable } from '@/lib/hermes';
  * much as an upload does.
  */
 
+// The parser runs a multi-round tool loop and, on Render's free tier, may
+// cold-start before it begins. Give the function the most wall-clock the plan
+// allows so it waits for the parser rather than aborting mid-analysis.
+// Hobby caps at 60s (a higher value fails the build); Pro/Fluid allow up to 300.
+export const maxDuration = 60;
+
 const requestSchema = z.object({
   workspaceId: z.string().uuid(),
   message: z.string().trim().min(1, 'Message is empty').max(4000),
