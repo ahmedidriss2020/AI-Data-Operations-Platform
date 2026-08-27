@@ -9,8 +9,8 @@ import 'server-only';
  * private network.
  */
 
-const PARSER_URL = process.env.PARSER_SERVICE_URL?.replace(/\/+$/, '');
-const PARSER_SECRET = process.env.PARSER_SERVICE_SECRET;
+const PARSER_URL = (process.env.PARSER_SERVICE_URL || process.env.HERMES_AGENT_ENDPOINT)?.replace(/\/+$/, '');
+const PARSER_SECRET = process.env.PARSER_SERVICE_SECRET || process.env.HERMES_API_SECRET;
 
 export interface ParseResult {
   rows: number;
@@ -72,11 +72,14 @@ async function call<T>(path: string, init: RequestInit, timeoutMs = 30_000): Pro
 }
 
 /** Push raw workbook bytes to the parser so it can parse them. */
-export function pushWorkbook(datasetId: string, bytes: ArrayBuffer): Promise<{ stored: boolean }> {
+export function pushWorkbook(datasetId: string, bytes: ArrayBuffer, filename?: string): Promise<{ stored: boolean }> {
   return call(`/datasets/${encodeURIComponent(datasetId)}`, {
     method: 'POST',
     body: bytes as unknown as BodyInit,
-    headers: { 'Content-Type': 'application/octet-stream' },
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      ...(filename ? { 'X-Filename': encodeURIComponent(filename) } : {}),
+    },
   });
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   ACCEPTED_EXTENSIONS,
@@ -36,6 +36,14 @@ export function UploadPanel({
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  // Sync datasetId if workspaceId or datasets list changes
+  useEffect(() => {
+    const valid = datasets.some((d) => d.id === datasetId);
+    if (!valid) {
+      setDatasetId(datasets[0]?.id ?? '');
+    }
+  }, [workspaceId, datasets, datasetId]);
+
   const creatingNewDataset = datasetId === '';
   const busy = phase !== 'idle';
 
@@ -63,17 +71,17 @@ export function UploadPanel({
       return;
     }
 
-    if (creatingNewDataset && datasetName.trim().length < 2) {
-      setError('Provide a name for the new recurring dataset');
-      return;
-    }
+    const fallbackName = file.name.replace(/\.[^/.]+$/, '').trim() || 'Bank statements';
+    const effectiveDatasetName = creatingNewDataset
+      ? (datasetName.trim() || fallbackName)
+      : null;
 
     try {
       const { datasetId: createdDatasetId } = await uploadStatement({
         workspaceId,
         file,
         datasetId: creatingNewDataset ? null : datasetId,
-        datasetName: creatingNewDataset ? datasetName.trim() : null,
+        datasetName: effectiveDatasetName,
         instructions: agentInstructions,
         onPhase: setPhase,
       });

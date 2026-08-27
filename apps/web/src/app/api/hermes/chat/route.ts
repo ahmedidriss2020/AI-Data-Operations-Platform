@@ -3,6 +3,9 @@ import { z } from 'zod';
 
 import { handleRouteError } from '@/lib/api';
 import { adminFor, requireWorkspaceAccess } from '@/lib/authz';
+import { createServerSupabase } from '@/lib/supabase/server';
+import { RAW_BUCKET } from '@/lib/storage';
+import { isParserConfigured, pushWorkbook } from '@/lib/parser-client';
 import type { Json } from '@/lib/database.types';
 import { HermesError, hermesChat, isChatAvailable } from '@/lib/hermes';
 
@@ -50,6 +53,34 @@ export async function POST(request: Request) {
         },
         { status: 503 },
       );
+    }
+
+    // If the parser is configured, ensure any stored uploads for this workspace are pushed to the parser
+    if (isParserConfigured()) {
+      try {
+        const supabase = await createServerSupabase();
+        const { data: uploads } = await supabase
+          .from('raw_uploads')
+          .select('id, dataset_id, storage_path, original_filename')
+          .eq('workspace_id', context.workspaceId)
+          .eq('status', 'stored')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (uploads && uploads.length > 0) {
+          for (const up of uploads) {
+            const key = up.dataset_id ?? up.id;
+            if (up.storage_path) {
+              const { data: obj } = await supabase.storage.from(RAW_BUCKET).download(up.storage_path);
+              if (obj) {
+                await pushWorkbook(key, await obj.arrayBuffer(), up.original_filename);
+              }
+            }
+          }
+        }
+      } catch (syncError) {
+        console.warn('[hermes/chat] dataset sync warning:', syncError);
+      }
     }
 
     const started = Date.now();

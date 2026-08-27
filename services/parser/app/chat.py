@@ -41,9 +41,9 @@ __all__ = ["chat"]
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
-MODEL_PRIMARY = os.environ.get("MODEL_PRIMARY", "stealth/ox-alpha")
+MODEL_PRIMARY = os.environ.get("MODEL_PRIMARY", "z-ai/glm-5.3-flash")
 MODEL_FALLBACK = os.environ.get("MODEL_SECONDARY", "")
-MAX_TOOL_ROUNDS = 4
+MAX_TOOL_ROUNDS = 8
 
 SYSTEM_PROMPT = """You are the AnalyzeIt data-operations copilot for a UK accounting practice.
 You are an autonomous but careful data analyst working alongside an accountant. You
@@ -119,15 +119,51 @@ def _tool_profile(ds_id: str) -> dict[str, Any]:
 
 
 def _tool_list_datasets(workspace_id: str | None) -> list[dict[str, Any]]:
+    # 1. Sync from Supabase raw_uploads if available
+    if supabase_configured() and workspace_id:
+        import httpx
+        from .main import SUPABASE_URL, _supabase_headers
+        try:
+            url = f"{SUPABASE_URL}/rest/v1/raw_uploads?workspace_id=eq.{workspace_id}&status=eq.stored&order=created_at.desc&limit=10"
+            resp = httpx.get(url, headers=_supabase_headers(), timeout=15)
+            if resp.status_code == 200:
+                for row in resp.json():
+                    key = row.get("dataset_id") or row.get("id")
+                    if key and key not in DATASETS:
+                        DATASETS[key] = {
+                            "bytes": None,
+                            "filename": row.get("original_filename"),
+                            "storage_path": row.get("storage_path"),
+                            "workspace_id": row.get("workspace_id"),
+                            "dataset_id": row.get("dataset_id"),
+                        }
+                    if key in DATASETS and "df" not in DATASETS[key] and DATASETS[key].get("storage_path"):
+                        try:
+                            ensure_parsed(key)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
     out = []
+    seen = set()
     for ds_id, ds in DATASETS.items():
+        if ds_id in seen:
+            continue
         if workspace_id and ds.get("workspace_id") not in (None, workspace_id):
             continue
+        seen.add(ds_id)
+        if "df" not in ds and ds.get("storage_path"):
+            try:
+                ensure_parsed(ds_id)
+            except Exception:
+                pass
         out.append({
             "dataset_id": ds_id,
             "filename": ds.get("filename"),
             "parsed": "df" in ds,
             "rows": ds["df"].height if "df" in ds else None,
+            "columns": ds["df"].columns if "df" in ds else [],
         })
     return out
 
@@ -525,7 +561,7 @@ async def chat(request: FastAPIRequest,
             calls = choice.get("tool_calls") or []
 
             if not calls:
-                reply_text = choice.get("content") or ""
+                reply_text = (choice.get("content") or "").strip() or (choice.get("reasoning") or "").strip()
                 break
 
             messages.append(choice)
@@ -552,7 +588,22 @@ async def chat(request: FastAPIRequest,
                     "content": json.dumps(result, default=str)[:6000],
                 })
         else:
-            reply_text = "I could not finish that analysis within the allowed steps."
+            try:
+                final_resp = await client.post(url, headers=headers, json={
+                    "model": used_model or MODEL_PRIMARY,
+                    "messages": messages + [{
+                        "role": "user",
+                        "content": "Please present your full analysis and breakdown now based on the data and query results gathered above."
+                    }],
+                    "max_tokens": 1500,
+                    "temperature": 0.2,
+                })
+                if final_resp.status_code == 200:
+                    reply_text = final_resp.json()["choices"][0]["message"].get("content") or ""
+            except Exception:
+                pass
+            if not reply_text:
+                reply_text = "I have gathered the data and queried the numbers, but could not format the final response in time."
 
     return {
         "status": "ok" if reply_text else "error",

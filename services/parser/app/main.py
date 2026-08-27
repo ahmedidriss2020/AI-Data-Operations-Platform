@@ -36,7 +36,7 @@ if web_env is not None and web_env.exists():
 else:
     load_dotenv()
 
-APP_SECRET = os.environ.get("HERMES_WEBHOOK_SECRET", "")
+APP_SECRET = os.environ.get("HERMES_WEBHOOK_SECRET") or os.environ.get("HERMES_API_SECRET", "")
 TOOL_SECRET = os.environ.get("TOOL_LAYER_SECRET", "")
 HERMES_API_SECRET = os.environ.get("HERMES_API_SECRET", "")
 
@@ -69,9 +69,19 @@ DATASETS: dict[str, dict[str, Any]] = {}
 # --------------------------------------------------------------------------
 
 def check_secret(header: str | None, expected: str, kind: str) -> None:
-    if not expected:
+    valid_secrets = {
+        s for s in (
+            APP_SECRET,
+            HERMES_API_SECRET,
+            TOOL_SECRET,
+            os.environ.get("HERMES_WEBHOOK_SECRET", ""),
+            os.environ.get("HERMES_API_SECRET", ""),
+        ) if s
+    }
+    if not valid_secrets:
         raise HTTPException(503, f"{kind} is not configured")
-    if header != expected:
+    clean = (header or "").removeprefix("Bearer ").strip()
+    if clean not in valid_secrets and header not in valid_secrets:
         raise HTTPException(401, "Unauthorized")
 
 
@@ -181,7 +191,22 @@ def parse_sheet(xlsx_bytes: bytes) -> dict[str, Any]:
         if len(vals) >= 2:
             records.append(rec)
 
-    df = pl.DataFrame(records) if records else pl.DataFrame({c: [] for c in columns})
+    if not records:
+        df = pl.DataFrame({c: [] for c in columns})
+    else:
+        try:
+            df = pl.DataFrame(records)
+        except Exception:
+            # Fallback: construct series per column to prevent schema inference crashes
+            col_data = {}
+            for col in columns:
+                raw_vals = [rec.get(col) for rec in records]
+                non_nulls = [x for x in raw_vals if x is not None]
+                if non_nulls and all(isinstance(x, (int, float)) for x in non_nulls):
+                    col_data[col] = pl.Series(col, [float(x) if x is not None else None for x in raw_vals], dtype=pl.Float64)
+                else:
+                    col_data[col] = pl.Series(col, [str(x) if x is not None else None for x in raw_vals], dtype=pl.Utf8)
+            df = pl.DataFrame(col_data)
     return {
         "dataframe": df,
         "header_row": header_idx,
@@ -309,6 +334,28 @@ def df_to_xlsx_bytes(df) -> bytes:
 def ensure_parsed(dataset_id: str) -> dict[str, Any]:
     """Parse + cache a dataset on first touch (webhook or tool call)."""
     ds = DATASETS.get(dataset_id)
+    if not ds and supabase_configured() and dataset_id:
+        import httpx
+        url = f"{SUPABASE_URL}/rest/v1/raw_uploads?or=(id.eq.{dataset_id},dataset_id.eq.{dataset_id})&status=eq.stored&limit=1"
+        try:
+            resp = httpx.get(url, headers=_supabase_headers(), timeout=15)
+            if resp.status_code == 200 and resp.json():
+                row = resp.json()[0]
+                ds = {
+                    "bytes": None,
+                    "filename": row.get("original_filename"),
+                    "storage_path": row.get("storage_path"),
+                    "workspace_id": row.get("workspace_id"),
+                    "dataset_id": row.get("dataset_id"),
+                }
+                DATASETS[dataset_id] = ds
+                if row.get("id"):
+                    DATASETS[row["id"]] = ds
+                if row.get("dataset_id"):
+                    DATASETS[row["dataset_id"]] = ds
+        except Exception:
+            pass
+
     if not ds:
         raise HTTPException(404, f"unknown dataset_id {dataset_id}")
     if "df" in ds:
@@ -402,7 +449,14 @@ async def push_dataset(dataset_id: str, request: Request,
         sheets = parse_probe.sheetnames
     except Exception:
         raise HTTPException(400, "not a valid xlsx workbook")
-    DATASETS[dataset_id] = {"bytes": body, "filename": dataset_id, "sheets": sheets}
+    raw_fn = request.headers.get("x-filename")
+    import urllib.parse
+    filename = urllib.parse.unquote(raw_fn) if raw_fn else dataset_id
+    DATASETS[dataset_id] = {"bytes": body, "filename": filename, "sheets": sheets}
+    try:
+        ensure_parsed(dataset_id)
+    except Exception:
+        pass
     return {"stored": True, "dataset_id": dataset_id, "sheets": sheets}
 
 

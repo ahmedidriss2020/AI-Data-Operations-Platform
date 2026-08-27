@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { handleRouteError } from '@/lib/api';
 import { adminFor, requireWorkspaceAccess } from '@/lib/authz';
+import { createServerSupabase } from '@/lib/supabase/server';
 import { RAW_BUCKET } from '@/lib/storage';
 import { sendHermesWebhook } from '@/lib/hermes';
 import { isParserConfigured, notifyParserUpload, pushWorkbook } from '@/lib/parser-client';
@@ -39,9 +40,11 @@ export async function POST(request: Request) {
     const body = requestSchema.parse(await request.json());
 
     const context = await requireWorkspaceAccess(body.workspaceId);
+    const supabase = await createServerSupabase();
     const admin = adminFor(context);
+    const db = supabase;
 
-    const { data: upload, error: loadError } = await admin
+    const { data: upload, error: loadError } = await db
       .from('raw_uploads')
       .select('id, workspace_id, dataset_id, storage_path, original_filename, status')
       .eq('id', body.uploadId)
@@ -65,16 +68,22 @@ export async function POST(request: Request) {
     const directory = upload.storage_path.slice(0, lastSlash);
     const objectName = upload.storage_path.slice(lastSlash + 1);
 
-    const { data: listed, error: listError } = await admin.storage
+    const isServiceRole = Boolean(
+      process.env.SUPABASE_SECRET_KEY &&
+      !process.env.SUPABASE_SECRET_KEY.startsWith('sb_publishable_') &&
+      process.env.SUPABASE_SECRET_KEY !== process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    );
+    const storageClient = isServiceRole ? admin.storage : db.storage;
+    const { data: listed, error: listError } = await storageClient
       .from(RAW_BUCKET)
       .list(directory, { search: objectName, limit: 1 });
 
     const object = listed?.find((entry) => entry.name === objectName);
 
     if (listError || !object) {
-      await admin.from('raw_uploads').update({ status: 'failed' }).eq('id', upload.id);
+      await db.from('raw_uploads').update({ status: 'failed' }).eq('id', upload.id);
 
-      await admin.rpc('write_audit', {
+      await db.rpc('write_audit', {
         p_org_id: context.orgId,
         p_workspace_id: context.workspaceId,
         p_action: 'upload.failed',
@@ -88,7 +97,7 @@ export async function POST(request: Request) {
 
     const actualSize = (object.metadata as { size?: number } | null)?.size ?? null;
 
-    const { error: updateError } = await admin
+    const { error: updateError } = await db
       .from('raw_uploads')
       .update({
         status: 'stored',
@@ -107,7 +116,7 @@ export async function POST(request: Request) {
     let datasetVersionId: string | null = null;
 
     if (upload.dataset_id) {
-      const { data: version, error: versionError } = await admin
+      const { data: version, error: versionError } = await db
         .from('dataset_versions')
         .insert({
           dataset_id: upload.dataset_id,
@@ -134,7 +143,7 @@ export async function POST(request: Request) {
       datasetVersionId = version?.id ?? null;
     }
 
-    await admin.rpc('write_audit', {
+    await db.rpc('write_audit', {
       p_org_id: context.orgId,
       p_workspace_id: context.workspaceId,
       p_action: 'upload.stored',
@@ -161,7 +170,7 @@ export async function POST(request: Request) {
         const datasetKey = upload.dataset_id ?? upload.id;
         // Download from our own storage and push bytes so the parser does not
         // need Supabase credentials of its own.
-        const { data: obj } = await admin.storage.from(RAW_BUCKET).download(upload.storage_path);
+        const { data: obj } = await storageClient.from(RAW_BUCKET).download(upload.storage_path);
         if (obj) {
           await pushWorkbook(datasetKey, await obj.arrayBuffer());
         }

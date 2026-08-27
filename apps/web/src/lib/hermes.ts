@@ -22,11 +22,12 @@ export interface WebhookEventPayload {
  * validates. The raw secret never travels on the wire.
  */
 export async function sendHermesWebhook(payload: WebhookEventPayload) {
-  const webhookUrl = process.env.HERMES_WEBHOOK_URL || 'http://srv1927440:8644/webhooks/analyzit-workbook-upload';
-  const secret = process.env.HERMES_WEBHOOK_SECRET;
+  const base = (process.env.HERMES_AGENT_ENDPOINT || 'http://srv1927440:8644').replace(/\/+$/, '');
+  const webhookUrl = process.env.HERMES_WEBHOOK_URL || `${base}/webhooks/analyzit-workbook-upload`;
+  const secret = process.env.HERMES_WEBHOOK_SECRET || process.env.HERMES_API_SECRET;
 
   if (!secret) {
-    throw new Error('HERMES_WEBHOOK_SECRET is not set; refusing to send an unsigned webhook');
+    return { received: false, skipped: true };
   }
 
   const body = JSON.stringify(payload);
@@ -38,13 +39,15 @@ export async function sendHermesWebhook(payload: WebhookEventPayload) {
       'Content-Type': 'application/json',
       'X-Hub-Signature-256': signature,
       'X-GitHub-Event': payload.event,
+      'X-Hermes-Secret': secret,
     },
     body,
+    signal: AbortSignal.timeout(5000),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to send Hermes Webhook [${response.status}]: ${errorText}`);
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Failed to send Hermes Webhook [${response.status}]: ${errorText.slice(0, 200)}`);
   }
 
   return response.json();

@@ -164,12 +164,14 @@ export default async function AnalyzerPage({
       {active && (
         <>
           <StatementUpload
+            key={`upload-${active.id}`}
             workspaceId={active.id}
             workspaceName={active.client_name ?? active.name}
             datasets={datasets}
             statementCount={statementCount}
           />
           <HermesChat
+            key={`chat-${active.id}`}
             workspaceId={active.id}
             workspaceName={active.client_name ?? active.name}
             datasets={datasets}
