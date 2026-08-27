@@ -37,29 +37,55 @@ MODEL_PRIMARY = os.environ.get("MODEL_PRIMARY", "stealth/ox-alpha")
 MODEL_FALLBACK = os.environ.get("MODEL_SECONDARY", "")
 MAX_TOOL_ROUNDS = 4
 
-SYSTEM_PROMPT = """You are the AnalyzeIt data-operations copilot for an accounting practice.
-You help accountants understand uploaded client workbooks: totals, anomalies,
-duplicates, vendor patterns, period comparisons.
+SYSTEM_PROMPT = """You are the AnalyzeIt data-operations copilot for a UK accounting practice.
+You are an autonomous but careful data analyst working alongside an accountant. You
+interpret messy client workbooks and bank statements, clean them, and answer questions
+about totals, anomalies, duplicates, vendor patterns, and period comparisons.
 
-Rules:
-- Every number you state MUST come from a tool result. Never invent or estimate figures.
-- Use query_dataset with SQLite-compatible SQL against table `ds` for computations.
-- Use profile_dataset first when unsure of column names/types.
-- If no dataset is loaded in this conversation, say what you need (an upload) — do not guess.
-- Money columns are Net Sales and VAT unless profile_dataset says otherwise.
-- Be concise and businesslike. Lead with the answer, then one line of method."""
+## How you work (follow this order)
+1. UNDERSTAND FIRST. Before running any analysis that produces figures, decide whether
+   the request is unambiguous. If key details are missing or ambiguous, ask ONE concise
+   clarifying question and stop — do not guess. Typical ambiguities: which client/file,
+   which month or date range, which column is the amount, net vs gross/VAT, how to treat
+   duplicates or blanks. If the request is already clear, proceed without asking.
+2. INSPECT. Use list_datasets to see what is loaded, and profile_dataset to learn column
+   names, types, null counts, and duplicate counts before computing anything.
+3. CLEAN WHEN IT MATTERS. If the data has issues that would distort the answer (duplicate
+   rows, junk/subtotal rows, blanks in a needed column), propose a cleaning step and use
+   clean_dataset / detect_duplicates / validate_dataset. Briefly tell the user what you
+   changed and why (e.g. "removed 3 duplicate rows"). Prefer a dry run first for anything
+   material; never silently discard data.
+4. ANSWER FROM DATA. Use query_dataset with SQL (DuckDB/SQLite dialect) against table `ds`
+   for every figure. Money columns are Net Sales and VAT unless profile_dataset shows
+   otherwise.
+
+## Hard rules
+- Every number you state MUST come from a tool result. Never invent, estimate, or
+  round-guess a figure. If a tool cannot produce it, say what you need.
+- If no dataset is loaded, say what you need (an upload) — do not fabricate.
+- Distinguish observed data from your interpretation. Flag anomalies; do not assert causes.
+- You clean and analyze, but the accountant approves material changes and signs off. You
+  are a copilot, not the final authority on the numbers.
+- Be concise and businesslike. Lead with the answer or the one clarifying question, then
+  at most one line of method."""
 
 
 # ---------------------------------------------------------------------------
 # tool implementations shared with /api/v1/tools
 # ---------------------------------------------------------------------------
 
+def _active_df(ds: dict[str, Any]):
+    """Return the cleaned dataframe if the model has run clean_dataset, else the
+    parsed original. So 'clean then analyze' operates on the cleaned data."""
+    return ds.get("cleaned", ds["df"])
+
+
 def _tool_query(ds_id: str, sql: str) -> dict[str, Any]:
     import duckdb
     ds = ensure_parsed(ds_id)
     con = duckdb.connect()
     try:
-        con.register("ds", ds["df"].to_pandas())
+        con.register("ds", _active_df(ds).to_pandas())
         res = con.execute(sql)
         rows = [list(r) for r in res.fetchall()]
         cols = [d[0] for d in res.description]
@@ -70,7 +96,7 @@ def _tool_query(ds_id: str, sql: str) -> dict[str, Any]:
 
 def _tool_profile(ds_id: str) -> dict[str, Any]:
     ds = ensure_parsed(ds_id)
-    df = ds["df"]
+    df = _active_df(ds)
     cols: dict[str, Any] = {}
     for col in df.columns:
         s = df[col]
@@ -93,6 +119,112 @@ def _tool_list_datasets(workspace_id: str | None) -> list[dict[str, Any]]:
             "rows": ds["df"].height if "df" in ds else None,
         })
     return out
+
+
+def _tool_detect_duplicates(ds_id: str) -> dict[str, Any]:
+    """Report duplicate rows without modifying anything."""
+    ds = ensure_parsed(ds_id)
+    df = ds["df"]
+    dup_mask = df.is_duplicated()
+    dup_count = int(dup_mask.sum())
+    sample = df.filter(dup_mask).head(10).to_dicts() if dup_count else []
+    return {
+        "duplicate_rows": dup_count,
+        "total_rows": df.height,
+        "sample": sample,
+    }
+
+
+def _tool_validate(ds_id: str, required_columns: list[str] | None) -> dict[str, Any]:
+    """Data-quality report: missing required columns, per-column null counts,
+    duplicate rows, empty rows. Read-only."""
+    ds = ensure_parsed(ds_id)
+    df = ds["df"]
+    required = required_columns or []
+    missing = [c for c in required if c not in df.columns]
+    nulls = {c: int(df[c].null_count()) for c in df.columns}
+    issues: list[str] = []
+    if missing:
+        issues.append(f"missing required columns: {', '.join(missing)}")
+    dup = int(df.is_duplicated().sum())
+    if dup:
+        issues.append(f"{dup} duplicate row(s)")
+    high_null = [c for c, n in nulls.items() if df.height and n > df.height * 0.5]
+    if high_null:
+        issues.append(f"columns >50% empty: {', '.join(high_null)}")
+    return {
+        "rows": df.height,
+        "columns": df.columns,
+        "missing_required_columns": missing,
+        "null_counts": nulls,
+        "duplicate_rows": dup,
+        "issues": issues,
+        "ok": not issues,
+    }
+
+
+def _tool_clean(ds_id: str, steps: list[dict[str, Any]], dry_run: bool) -> dict[str, Any]:
+    """Apply cleaning steps and write the result to a cleaned copy of the dataset.
+
+    Supported steps (each a dict with a "type"):
+      - {"type": "dedupe"}                              remove exact duplicate rows
+      - {"type": "drop_nulls", "column": "<col>"}       drop rows null in <col>
+      - {"type": "drop_empty_rows"}                      drop fully-empty rows
+
+    The original dataframe (ds["df"]) is never mutated -- immutable source
+    (PRD section 8). A dry run reports the effect without persisting; a real run
+    stores the result in ds["cleaned"]. Returns a change summary.
+    """
+    ds = ensure_parsed(ds_id)
+    df = ds["df"]
+    before = df.height
+    working = df
+    applied: list[dict[str, Any]] = []
+
+    for step in steps:
+        st = (step or {}).get("type")
+        rows_before = working.height
+        if st == "dedupe":
+            working = working.unique(keep="first")
+        elif st == "drop_nulls" and step.get("column"):
+            col = step["column"]
+            if col in working.columns:
+                working = working.drop_nulls(subset=[col])
+        elif st == "drop_empty_rows":
+            # a row is "empty" when every value is null
+            working = working.filter(
+                ~pl_all_horizontal_null(working)
+            )
+        else:
+            applied.append({"type": st, "skipped": "unknown or missing params"})
+            continue
+        applied.append({"type": st, "removed": rows_before - working.height})
+
+    after = working.height
+    if not dry_run:
+        ds["cleaned"] = working
+
+    return {
+        "dry_run": dry_run,
+        "rows_before": before,
+        "rows_after": after,
+        "rows_removed": before - after,
+        "applied_steps": applied,
+        "persisted": (not dry_run),
+        "note": "Cleaned copy stored; original preserved." if not dry_run
+        else "Preview only; nothing persisted.",
+    }
+
+
+def pl_all_horizontal_null(df):
+    """Boolean mask: True where every column in the row is null."""
+    import polars as _pl
+    if not df.columns:
+        return _pl.Series([False] * df.height)
+    expr = _pl.col(df.columns[0]).is_null()
+    for c in df.columns[1:]:
+        expr = expr & _pl.col(c).is_null()
+    return df.select(expr.alias("_allnull"))["_allnull"]
 
 
 TOOLS_SPEC = [
@@ -131,6 +263,72 @@ TOOLS_SPEC = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "detect_duplicates",
+            "description": "Report how many exact-duplicate rows a dataset has (with a small sample). Read-only; changes nothing.",
+            "parameters": {
+                "type": "object",
+                "properties": {"dataset_id": {"type": "string"}},
+                "required": ["dataset_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "validate_dataset",
+            "description": "Data-quality report: missing required columns, per-column null counts, duplicate rows, mostly-empty columns. Read-only. Use before analysis to decide what needs cleaning.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dataset_id": {"type": "string"},
+                    "required_columns": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional columns that must be present.",
+                    },
+                },
+                "required": ["dataset_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clean_dataset",
+            "description": (
+                "Apply cleaning steps to a dataset, writing to a cleaned copy "
+                "(the original is preserved). Steps: {type:'dedupe'}, "
+                "{type:'drop_nulls', column:'<col>'}, {type:'drop_empty_rows'}. "
+                "ALWAYS call once with dry_run=true first to preview the row impact, "
+                "tell the user, then call with dry_run=false to persist."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dataset_id": {"type": "string"},
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["dedupe", "drop_nulls", "drop_empty_rows"],
+                                },
+                                "column": {"type": "string"},
+                            },
+                            "required": ["type"],
+                        },
+                    },
+                    "dry_run": {"type": "boolean"},
+                },
+                "required": ["dataset_id", "steps"],
+            },
+        },
+    },
 ]
 
 
@@ -141,6 +339,16 @@ def _execute_tool(name: str, args: dict[str, Any], scope_workspace_id: str | Non
         return _tool_profile(args["dataset_id"])
     if name == "list_datasets":
         return {"datasets": _tool_list_datasets(scope_workspace_id)}
+    if name == "detect_duplicates":
+        return _tool_detect_duplicates(args["dataset_id"])
+    if name == "validate_dataset":
+        return _tool_validate(args["dataset_id"], args.get("required_columns"))
+    if name == "clean_dataset":
+        return _tool_clean(
+            args["dataset_id"],
+            args.get("steps") or [],
+            bool(args.get("dry_run", True)),
+        )
     return {"error": f"unknown tool {name}"}
 
 
