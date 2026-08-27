@@ -47,8 +47,15 @@ HERMES_API_SECRET = os.environ.get("HERMES_API_SECRET", "")
 # Supabase Storage (production): the webhook carries storage_path and the
 # service downloads the raw workbook itself.
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+# The deploy env (Render/render.yaml/.env) provides SUPABASE_SECRET_KEY; older
+# code read SUPABASE_SERVICE_ROLE_KEY. Accept either so Storage actually works
+# in production instead of silently no-opping.
+SUPABASE_SERVICE_ROLE_KEY = (
+    os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    or os.environ.get("SUPABASE_SECRET_KEY", "")
+)
 RAW_BUCKET = os.environ.get("RAW_BUCKET", "raw")
+CLEANED_BUCKET = os.environ.get("CLEANED_BUCKET", "cleaned")
 
 app = FastAPI(title="AnalyzeIt Parser Agent", version="0.1.0")
 
@@ -219,6 +226,78 @@ def fetch_from_supabase(storage_path: str) -> bytes | None:
     if resp.status_code != 200:
         raise HTTPException(502, f"Supabase Storage fetch failed [{resp.status_code}] for {storage_path}")
     return resp.content
+
+
+def supabase_configured() -> bool:
+    return bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+
+
+def _supabase_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
+    h = {"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"}
+    if extra:
+        h.update(extra)
+    return h
+
+
+def ensure_bucket(bucket: str) -> None:
+    """Create a private Storage bucket if it doesn't exist. Idempotent."""
+    if not supabase_configured():
+        return
+    import httpx
+    httpx.post(
+        f"{SUPABASE_URL}/storage/v1/bucket",
+        headers=_supabase_headers({"Content-Type": "application/json"}),
+        json={"id": bucket, "name": bucket, "public": False},
+        timeout=30,
+    )  # 200 = created, 400 "already exists" = fine; we don't gate on it.
+
+
+def upload_to_supabase(bucket: str, path: str, data: bytes, content_type: str) -> None:
+    """Upsert bytes to Storage at bucket/path."""
+    if not supabase_configured():
+        raise HTTPException(409, "Supabase Storage not configured (SUPABASE_URL + service key)")
+    import httpx
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path.lstrip('/')}"
+    resp = httpx.post(
+        url,
+        headers=_supabase_headers({"Content-Type": content_type, "x-upsert": "true"}),
+        content=data,
+        timeout=60,
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(502, f"Supabase upload failed [{resp.status_code}]: {resp.text[:200]}")
+
+
+def sign_supabase_url(bucket: str, path: str, expires_in: int = 3600) -> str:
+    """Return a time-limited public download URL for a private object."""
+    if not supabase_configured():
+        raise HTTPException(409, "Supabase Storage not configured")
+    import httpx
+    url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{path.lstrip('/')}"
+    resp = httpx.post(
+        url,
+        headers=_supabase_headers({"Content-Type": "application/json"}),
+        json={"expiresIn": expires_in},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        raise HTTPException(502, f"Supabase sign failed [{resp.status_code}]: {resp.text[:200]}")
+    body = resp.json()
+    signed = body.get("signedURL") or body.get("signedUrl") or ""
+    return f"{SUPABASE_URL}/storage/v1{signed}"
+
+
+def df_to_xlsx_bytes(df) -> bytes:
+    """Serialize a Polars DataFrame to .xlsx bytes via openpyxl."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.append(list(df.columns))
+    for row in df.iter_rows():
+        ws.append([v for v in row])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def ensure_parsed(dataset_id: str) -> dict[str, Any]:

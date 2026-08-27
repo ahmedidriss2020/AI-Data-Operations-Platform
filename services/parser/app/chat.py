@@ -22,9 +22,17 @@ import httpx
 from fastapi import Header, HTTPException
 
 try:
-    from .main import APP_SECRET, TOOL_SECRET, app, DATASETS, ensure_parsed
+    from .main import (
+        APP_SECRET, TOOL_SECRET, app, DATASETS, ensure_parsed,
+        CLEANED_BUCKET, ensure_bucket, upload_to_supabase, sign_supabase_url,
+        df_to_xlsx_bytes, supabase_configured,
+    )
 except ImportError:
-    from main import APP_SECRET, TOOL_SECRET, app, DATASETS, ensure_parsed
+    from main import (
+        APP_SECRET, TOOL_SECRET, app, DATASETS, ensure_parsed,
+        CLEANED_BUCKET, ensure_bucket, upload_to_supabase, sign_supabase_url,
+        df_to_xlsx_bytes, supabase_configured,
+    )
 
 from fastapi import Request as FastAPIRequest
 
@@ -58,6 +66,9 @@ about totals, anomalies, duplicates, vendor patterns, and period comparisons.
 4. ANSWER FROM DATA. Use query_dataset with SQL (DuckDB/SQLite dialect) against table `ds`
    for every figure. Money columns are Net Sales and VAT unless profile_dataset shows
    otherwise.
+5. DELIVER THE FILE WHEN ASKED. After you persist a clean, or whenever the user asks for
+   the cleaned/edited/exported file, call export_dataset (format xlsx or csv) and give the
+   user the returned download_url. The link is valid ~1 hour. Never invent a link.
 
 ## Hard rules
 - Every number you state MUST come from a tool result. Never invent, estimate, or
@@ -216,6 +227,55 @@ def _tool_clean(ds_id: str, steps: list[dict[str, Any]], dry_run: bool) -> dict[
     }
 
 
+def _tool_export(ds_id: str, fmt: str, which: str) -> dict[str, Any]:
+    """Serialize a dataset to CSV/XLSX, upload it to Supabase Storage, and
+    return a time-limited signed download URL the dashboard can hand to the user.
+
+    which='cleaned' (default) exports ds['cleaned'] if a clean was persisted,
+    else falls back to the parsed original. which='original' always exports the
+    parsed source. The immutable raw upload is never touched.
+    """
+    ds = ensure_parsed(ds_id)
+    if which == "original":
+        df = ds["df"]
+        label = "original"
+    else:
+        df = ds.get("cleaned", ds["df"])
+        label = "cleaned" if "cleaned" in ds else "original"
+
+    fmt = (fmt or "xlsx").lower()
+    if fmt not in ("xlsx", "csv"):
+        return {"error": f"unsupported format {fmt}; use 'xlsx' or 'csv'"}
+
+    if not supabase_configured():
+        return {"error": "file export needs Supabase Storage configured on the parser "
+                         "(SUPABASE_URL + service key); not available in this environment"}
+
+    if fmt == "csv":
+        data = df.write_csv().encode()
+        content_type = "text/csv"
+    else:
+        data = df_to_xlsx_bytes(df)
+        content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    safe_id = "".join(c if (c.isalnum() or c in "-_./") else "_" for c in ds_id)
+    path = f"{safe_id}/{label}.{fmt}"
+    ensure_bucket(CLEANED_BUCKET)
+    upload_to_supabase(CLEANED_BUCKET, path, data, content_type)
+    signed = sign_supabase_url(CLEANED_BUCKET, path, expires_in=3600)
+    return {
+        "exported": label,
+        "format": fmt,
+        "rows": df.height,
+        "bucket": CLEANED_BUCKET,
+        "path": path,
+        "download_url": signed,
+        "expires_in_seconds": 3600,
+        "note": f"{label} dataset exported as {fmt}. Give the user the download_url "
+                "(valid ~1 hour). Original upload preserved.",
+    }
+
+
 def pl_all_horizontal_null(df):
     """Boolean mask: True where every column in the row is null."""
     import polars as _pl
@@ -329,6 +389,30 @@ TOOLS_SPEC = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "export_dataset",
+            "description": (
+                "Export a dataset to a downloadable file and return a signed "
+                "download_url (valid ~1 hour) to give the user. Use this after a "
+                "clean is persisted, or whenever the user asks for the cleaned/edited "
+                "file. which='cleaned' returns the cleaned copy (falls back to the "
+                "original if nothing was cleaned); which='original' returns the "
+                "parsed source. Never fabricate a link — only report the download_url "
+                "this tool returns."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dataset_id": {"type": "string"},
+                    "format": {"type": "string", "enum": ["xlsx", "csv"]},
+                    "which": {"type": "string", "enum": ["cleaned", "original"]},
+                },
+                "required": ["dataset_id"],
+            },
+        },
+    },
 ]
 
 
@@ -348,6 +432,12 @@ def _execute_tool(name: str, args: dict[str, Any], scope_workspace_id: str | Non
             args["dataset_id"],
             args.get("steps") or [],
             bool(args.get("dry_run", True)),
+        )
+    if name == "export_dataset":
+        return _tool_export(
+            args["dataset_id"],
+            args.get("format", "xlsx"),
+            args.get("which", "cleaned"),
         )
     return {"error": f"unknown tool {name}"}
 
