@@ -1,0 +1,5 @@
+# Parser service local state — never commit
+venv/
+.env
+__pycache__/
+*.py[cod]

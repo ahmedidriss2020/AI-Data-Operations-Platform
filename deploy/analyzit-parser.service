@@ -1,0 +1,38 @@
+# systemd unit for the AnalyzeIt parser / agent service (Hostinger VPS).
+#
+# Install:
+#   sudo cp deploy/analyzit-parser.service /etc/systemd/system/
+#   # edit User= and the two paths below if the repo lives elsewhere
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now analyzit-parser
+#   systemctl status analyzit-parser
+#   journalctl -u analyzit-parser -f      # live logs
+#
+# Prereqs on the VPS (once):
+#   cd services/parser && python3 -m venv venv && venv/bin/pip install -r requirements.txt
+#   cp .env.example .env   # then fill in real values (OpenRouter key, secrets)
+#
+# Secrets come from services/parser/.env via EnvironmentFile — never bake them
+# into this unit (it is committed to git).
+
+[Unit]
+Description=AnalyzeIt Parser/Agent (FastAPI, OpenRouter reasoning, PRD v3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=analyzit
+WorkingDirectory=/opt/AI-Data-Operations-Platform/services/parser
+EnvironmentFile=/opt/AI-Data-Operations-Platform/services/parser/.env
+ExecStart=/opt/AI-Data-Operations-Platform/services/parser/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8100
+Restart=always
+RestartSec=2
+# Give the process a clean shutdown window
+TimeoutStopSec=10
+# Basic hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
