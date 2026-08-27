@@ -220,7 +220,7 @@ def fetch_from_supabase(storage_path: str) -> bytes | None:
     url = f"{SUPABASE_URL}/storage/v1/object/{RAW_BUCKET}/{storage_path.lstrip('/')}"
     resp = httpx.get(
         url,
-        headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
+        headers=_supabase_headers(),
         timeout=30,
     )
     if resp.status_code != 200:
@@ -233,7 +233,13 @@ def supabase_configured() -> bool:
 
 
 def _supabase_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
-    h = {"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"}
+    # New-format keys (sb_secret_*) are not JWTs; the Storage/REST APIs require
+    # them in BOTH the apikey header and Authorization: Bearer. Sending only
+    # Authorization makes Storage try to parse it as a JWT ("Invalid Compact JWS").
+    h = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+    }
     if extra:
         h.update(extra)
     return h
