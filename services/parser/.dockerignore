@@ -1,0 +1,8 @@
+# Docker build context excludes — keep the image small and secrets out.
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.local
+*.md
+.git

@@ -7,3 +7,4 @@ python-multipart>=0.0.20
 httpx>=0.28
 pyarrow>=25
 pandas>=2.2
+python-dotenv>=1.0

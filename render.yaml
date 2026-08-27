@@ -1,0 +1,36 @@
+# Render blueprint for the AnalyzeIt parser/agent service.
+# One-click deploy: Render Dashboard → New → Blueprint → connect this repo.
+# Render reads this file, builds services/parser/Dockerfile, and provisions the
+# service. Fill the sync:false secrets in the dashboard after the first deploy
+# (they are intentionally NOT stored in git).
+services:
+  - type: web
+    name: analyzit-parser
+    runtime: docker
+    plan: free
+    rootDir: services/parser
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Reasoning provider
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: MODEL_PRIMARY
+        value: z-ai/glm-5.3-flash
+      - key: MODEL_SECONDARY
+        value: z-ai/glm-5.3-flash
+      # Shared secret the Next.js dashboard presents as `Authorization: Bearer`.
+      # Set the SAME value in Vercel's HERMES_API_SECRET.
+      - key: HERMES_API_SECRET
+        sync: false
+      # HMAC key for the controlled tool layer; must match Vercel's TOOL_LAYER_SECRET.
+      - key: TOOL_LAYER_SECRET
+        sync: false
+      # Supabase (service-role — server-only) so the parser can fetch uploads.
+      - key: SUPABASE_URL
+        value: https://jweclsvkndyvltchnbcl.supabase.co
+      - key: SUPABASE_SECRET_KEY
+        sync: false
