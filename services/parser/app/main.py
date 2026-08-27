@@ -26,9 +26,12 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Load apps/web/.env.local if available
-web_env = Path(__file__).resolve().parents[3] / "apps" / "web" / ".env.local"
-if web_env.exists():
+# Load apps/web/.env.local if available (dev convenience). In a container the
+# repo layout above the service dir is absent, so guard the parent lookup —
+# parents[3] raises IndexError when main.py sits shallow (e.g. /app/app/main.py).
+_parents = Path(__file__).resolve().parents
+web_env = _parents[3] / "apps" / "web" / ".env.local" if len(_parents) > 3 else None
+if web_env is not None and web_env.exists():
     load_dotenv(web_env)
 else:
     load_dotenv()
