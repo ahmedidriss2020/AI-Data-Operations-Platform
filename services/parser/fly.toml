@@ -1,0 +1,33 @@
+# Fly.io app config for the AnalyzeIt parser/agent service.
+# Deploy from services/parser:  flyctl deploy
+# App name may be adjusted by `flyctl launch`/`apps create` if taken.
+app = "analyzit-parser"
+primary_region = "lhr"   # London — closest to UK-first customers
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8100"
+  OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+  MODEL_PRIMARY = "z-ai/glm-5.3-flash"
+  MODEL_SECONDARY = "z-ai/glm-5.3-flash"
+  SUPABASE_URL = "https://jweclsvkndyvltchnbcl.supabase.co"
+
+[http_service]
+  internal_port = 8100
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0   # scale to zero when idle (free-tier friendly)
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"   # DuckDB + Polars + pandas need headroom; bump to 1gb if OOM
